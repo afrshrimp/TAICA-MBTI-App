@@ -4,9 +4,10 @@ import re
 import plotly.graph_objects as go
 import random
 from groq import Groq
+import pandas as pd
 
 # --- 1. 頁面配置：可愛風格 ---
-st.set_page_config(page_title="TAICA MBTI V12 🌸 (Cloud Edition)", page_icon="☁️", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V13 🌸 (Ultimate)", page_icon="👑", layout="wide")
 
 st.markdown("""
     <style>
@@ -19,18 +20,22 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# --- 2. 全域暫存資料庫 (用於全班統計儀表板) ---
+@st.cache_resource
+def get_global_leaderboard():
+    return [] # 儲存格式: [{'nickname': '佳鈺', 'type': 'INTJ'}]
+
+global_board = get_global_leaderboard()
+
+# --- 3. 核心 AI 引擎 ---
 class TAICAMasterCloud:
     def __init__(self):
-        # 讀取 Streamlit 雲端設定的隱私金鑰
         try:
             self.client = Groq(api_key=st.secrets["GROQ_API_KEY"])
         except Exception as e:
             st.error("⚠️ 尚未設定 API Key，請在 Streamlit Cloud 的 Secrets 中設定 GROQ_API_KEY。")
             
-        # 使用 Groq 上的 Llama 3 8B 模型
-        # self.model = "llama3-8b-8192" 已退役
-        # 更新為 Llama 3.1 8B 瞬態模型
-        self.model = "llama-3.1-8b-instant"
+        self.model = "llama-3.1-8b-instant" 
         
         self.q_bank = {
             'E-I': ["放假喜歡一個人宅著，還是跟朋友出門去玩？", "到陌生的聚會，你會主動跟人搭話嗎？", "心情不好時，喜歡找人傾訴還是自己消化？", "在人群中，你通常是說話的人還是聽別人說？"],
@@ -47,7 +52,7 @@ class TAICAMasterCloud:
                     {"role": "user", "content": user_prompt}
                 ],
                 model=self.model,
-                temperature=0.6,
+                temperature=0.4, # 調低溫度，讓 Few-Shot 模仿得更完美
             )
             return chat_completion.choices[0].message.content.strip()
         except Exception as e:
@@ -58,8 +63,7 @@ class TAICAMasterCloud:
         
         def safe_val(v):
             try:
-                val = float(v)
-                return max(0, min(100, val)) 
+                return max(0, min(100, float(v))) 
             except:
                 return 50
 
@@ -79,25 +83,25 @@ class TAICAMasterCloud:
         )
         return fig
 
-# --- 3. 狀態管理 ---
+# --- 4. 狀態管理 ---
 st.markdown('<h1 class="main-title">✨ 懂你的 16 型人格小助手 ✨</h1>', unsafe_allow_html=True)
 
-if 'v12_init' not in st.session_state:
+if 'v13_init' not in st.session_state:
     master_temp = TAICAMasterCloud()
     all_qs = [{"dim": dim, "q": q} for dim, qs in master_temp.q_bank.items() for q in qs]
     random.shuffle(all_qs)
     
     st.session_state.update({
-        'v12_init': False, 'step': 1, 'history': [], 'nickname': '', 'gender': '',
-        'questions': all_qs
+        'v13_init': False, 'step': 1, 'history': [], 'nickname': '', 'gender': '',
+        'questions': all_qs, 'saved_to_board': False
     })
 
 master = TAICAMasterCloud()
 
-# 側邊欄
+# --- 側邊欄：儀表板與狀態 ---
 with st.sidebar:
     st.markdown("### 🎀 測驗小檔案")
-    if st.session_state.v12_init:
+    if st.session_state.v13_init:
         st.write(f"🧸 暱稱: **{st.session_state.nickname}**")
         st.write(f"✨ 性別: **{st.session_state.gender}**")
         st.progress(min(st.session_state.step / 16, 1.0))
@@ -105,9 +109,23 @@ with st.sidebar:
     if st.button("🔄 重新開始測驗"):
         for k in st.session_state.keys(): del st.session_state[k]
         st.rerun()
+    
+    st.markdown("---")
+    st.markdown("### 🏆 班級 MBTI 統計牆")
+    if len(global_board) > 0:
+        df = pd.DataFrame(global_board)
+        # 顯示最新測驗的 5 個人
+        st.dataframe(df.tail(5).iloc[::-1], hide_index=True, use_container_width=True)
+        # 顯示類型統計
+        st.write("**類型分佈排行：**")
+        type_counts = df['MBTI類型'].value_counts()
+        st.bar_chart(type_counts, color="#FF7EB3")
+    else:
+        st.info("目前還沒有人完成測驗喔，趕快搶頭香！")
 
+# --- 5. 測驗流程 ---
 # 階段 A: 登錄
-if not st.session_state.v12_init:
+if not st.session_state.v13_init:
     st.markdown('<div class="report-card">', unsafe_allow_html=True)
     st.subheader("👋 哈囉！先讓我認識你吧")
     c1, c2 = st.columns(2)
@@ -115,7 +133,7 @@ if not st.session_state.v12_init:
     with c2: gend = st.radio("你的性別是？", ["女孩", "男孩"], horizontal=True)
     if st.button("🌸 開始輕鬆測驗 🌸"):
         if nick:
-            st.session_state.nickname, st.session_state.gender, st.session_state.v12_init = nick, gend, True
+            st.session_state.nickname, st.session_state.gender, st.session_state.v13_init = nick, gend, True
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -125,7 +143,7 @@ elif st.session_state.step <= 16:
     
     st.markdown(f'<div class="question-box"><h4>題 {st.session_state.step} / 16</h4><p style="font-size:1.3rem; font-weight:bold;">{current_q_text}</p></div>', unsafe_allow_html=True)
     
-    with st.form(key=f"v12_form_{st.session_state.step}"):
+    with st.form(key=f"v13_form_{st.session_state.step}"):
         ans = st.text_input("你的直覺是什麼呢？", placeholder="簡單寫下你的想法...", key=f"input_{st.session_state.step}")
         if st.form_submit_button("送出 💌"):
             if ans:
@@ -133,29 +151,38 @@ elif st.session_state.step <= 16:
                 st.session_state.step += 1
                 st.rerun()
 
-# 階段 C: 最終 AI 深度報告
+# 階段 C: 最終 AI 深度報告 (Few-Shot 完美版)
 else:
     with st.spinner("✨ 測驗完成！AI 正在雲端為你整理專屬分析報告..."):
+        
+        # 導入 Few-Shot 提示工程，讓 AI 100% 鎖定輸出格式與溫柔語氣
         analysis_p = f"""
         受試者：{st.session_state.nickname} ({st.session_state.gender})。
         請根據問答紀錄分析其 MBTI 人格。
 
         【超級重要：格式規範】
-        你必須先輸出一個 JSON 區塊，用 ```json 和 ``` 包起來。數值必須是 0 到 100 的「正整數」。
-        範例格式：
+        你必須完全模仿下方的【完美範例】格式來輸出，不要增加額外的標題或廢話。
+
+        【完美範例開始】
         ```json
         {{"scores": {{"E-I": 80, "S-N": 30, "T-F": 65, "J-P": 45}}, "type": "ENFP"}}
         ```
         
-        輸出完 JSON 區塊後，請開始寫報告內文：
-        ### 🌸 TAICA 專屬人格解析 - {st.session_state.nickname} 🌸
+        ### 🌸 TAICA 專屬人格解析 - (填入受試者暱稱) 🌸
+        
         【你的閃光點✨】
+        * (列出第一點溫柔的稱讚與分析)
+        * (列出第二點)
+        
         【小煩惱與建議💡】
+        * (列出第一點貼心的建議)
+        * (列出第二點)
+        【完美範例結束】
         """
         raw_res = master.call_ai(analysis_p, str(st.session_state.history))
         
         default_scores = {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}
-        mbti_type = "未定義 (AI 解析微調中)"
+        mbti_type = "未定義"
         report = raw_res
         
         try:
@@ -164,8 +191,7 @@ else:
                 json_match = re.search(r'\{[^{}]*"scores".*?\}', raw_res, re.DOTALL)
                 if json_match:
                     json_str = json_match.group()
-                    if json_str.count('{') > json_str.count('}'):
-                        json_str += '}'
+                    if json_str.count('{') > json_str.count('}'): json_str += '}'
                     data = json.loads(json_str)
                     report = raw_res.replace(json_match.group(), "").strip()
             else:
@@ -175,13 +201,32 @@ else:
             mbti_type = data.get("type", mbti_type)
             default_scores = data.get("scores", default_scores)
         except:
-            st.warning("⚠️ 喔喔！AI 在計算分數時稍微發散了，但大師已經幫你還原了報告！")
+            pass # 靜默處理錯誤，依賴預設值保證畫面不崩潰
         
+        # 寫入全域儀表板 (避免重複寫入)
+        if not st.session_state.saved_to_board and mbti_type != "未定義":
+            global_board.append({"受試者": st.session_state.nickname, "MBTI類型": mbti_type})
+            st.session_state.saved_to_board = True
+        
+        # 觸發全螢幕氣球特效
+        st.balloons()
+        
+        # 渲染畫面
         st.markdown('<div class="report-card">', unsafe_allow_html=True)
         col_l, col_r = st.columns([3, 2])
         with col_l:
             st.markdown(report)
+            
+            # 建立下載按鈕
+            download_content = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n專屬類型：{mbti_type}\n\n{report.replace('#', '')}"
+            st.download_button(
+                label="💌 一鍵下載專屬報告",
+                data=download_content,
+                file_name=f"TAICA_MBTI_{st.session_state.nickname}.txt",
+                mime="text/plain"
+            )
+            
         with col_r:
             st.plotly_chart(master.draw_radar(default_scores, mbti_type), use_container_width=True)
-            st.markdown(f"### 🎉 你的專屬類型：<span style='color:#FF7EB3;'>{mbti_type}</span>", unsafe_allow_html=True)
+            st.markdown(f"<h3 style='text-align: center;'>🎉 你的專屬類型：<span style='color:#FF7EB3;'>{mbti_type}</span></h3>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
