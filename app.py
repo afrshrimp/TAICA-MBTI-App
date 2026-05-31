@@ -7,7 +7,7 @@ from groq import Groq
 import pandas as pd
 
 # --- 1. 頁面配置與櫻花馬卡龍系視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V16.1 🌸 (Beta Test Edition)", page_icon="👑", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V16.2 🌸 (Title Edition)", page_icon="👑", layout="wide")
 
 st.markdown("""
     <style>
@@ -22,6 +22,14 @@ st.markdown("""
     .pet-title { font-size: 2rem; color: #FF7EB3; text-align: center; font-weight: bold; margin-bottom: 15px; }
     </style>
     """, unsafe_allow_html=True)
+
+# --- 🔥 新增：MBTI 官方 16 型人格稱號字典 (零幻覺防禦機制) ---
+MBTI_TITLES = {
+    "INTJ": "建築師", "INTP": "邏輯學家", "ENTJ": "指揮官", "ENTP": "辯論家",
+    "INFJ": "提倡者", "INFP": "調停者", "ENFJ": "主人公", "ENFP": "競選者",
+    "ISTJ": "物流師", "ISFJ": "守衛者", "ESTJ": "總經理", "ESFJ": "執政官",
+    "ISTP": "鑑賞家", "ISFP": "探險家", "ESTP": "企業家", "ESFP": "表演者"
+}
 
 # --- 2. 全域暫存資料庫 ---
 @st.cache_resource
@@ -155,7 +163,6 @@ else:
     if 'final_report' not in st.session_state or 'final_pet' not in st.session_state:
         with st.spinner("✨ 測驗完成！大師正在進行 Fuzzy 模糊邏輯運算，並為你召喚專屬守護神獸..."):
             
-            # 🔥 提示詞修復：加入動態名稱變數與「報告結束」錨點
             analysis_p = f"""
             受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學(Fuzzy Logic)』與『社群遊戲化』的權威 AI。
 
@@ -220,7 +227,7 @@ else:
                 default_scores = data.get("scores", default_scores)
                 pet_name = data.get("pet", pet_name)
                 
-                # 🔥 頭尾雙殺防禦法：徹底清除所有廢話與程式碼幻覺
+                # 🔥 頭尾雙殺防禦法
                 if "### 🌸 TAICA" in report:
                     report = "### 🌸 TAICA" + report.split("### 🌸 TAICA")[1]
                 else:
@@ -256,9 +263,12 @@ else:
         st.markdown("---")
         st.markdown("#### 💌 匯出你的專屬報告 (與朋友分享)")
         
-        export_txt = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n專屬類型：{st.session_state.final_mbti_type}\n靈魂神獸：{st.session_state.final_pet}\n\n{st.session_state.final_report.replace('#', '')}"
+        # 🔥 動態抓取官方稱號，若無則顯示「神祕類型」
+        current_title = MBTI_TITLES.get(st.session_state.final_mbti_type, "神祕類型")
         
-        export_md = f"# TAICA 專屬人格解析 - {st.session_state.nickname}\n\n**專屬類型**：{st.session_state.final_mbti_type}\n**靈魂神獸**：{st.session_state.final_pet}\n\n{st.session_state.final_report}\n\n*(提示：使用瀏覽器打開此 Markdown 檔案，按下 Ctrl+P 即可列印成精美的 PDF 報告！)*"
+        export_txt = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n專屬類型：{st.session_state.final_mbti_type} ({current_title})\n靈魂神獸：{st.session_state.final_pet}\n\n{st.session_state.final_report.replace('#', '')}"
+        
+        export_md = f"# TAICA 專屬人格解析 - {st.session_state.nickname}\n\n**專屬類型**：{st.session_state.final_mbti_type} ({current_title})\n**靈魂神獸**：{st.session_state.final_pet}\n\n{st.session_state.final_report}\n\n*(提示：使用瀏覽器打開此 Markdown 檔案，按下 Ctrl+P 即可列印成精美的 PDF 報告！)*"
         
         dl_c1, dl_c2 = st.columns(2)
         with dl_c1:
@@ -268,5 +278,7 @@ else:
             
     with col_r:
         st.plotly_chart(master.draw_radar(st.session_state.final_scores, st.session_state.final_mbti_type), use_container_width=True)
-        st.markdown(f"<h3 style='text-align: center; color: #5D4037;'>🎉 專屬類型：<span style='color:#FF7EB3;'>{st.session_state.final_mbti_type}</span></h3>", unsafe_allow_html=True)
+        
+        # 🔥 網頁 UI 也同步顯示稱號！
+        st.markdown(f"<h3 style='text-align: center; color: #5D4037;'>🎉 專屬類型：<span style='color:#FF7EB3;'>{st.session_state.final_mbti_type} ({current_title})</span></h3>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
