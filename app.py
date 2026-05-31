@@ -172,7 +172,7 @@ else:
         請確保敘述完全合理化該 MBTI 類型的標準特質。
 
         【完美範例開始】
-```json
+        ```json
         {{"scores": {{"E-I": 80, "S-N": 30, "T-F": 65, "J-P": 45}}, "type": "ENFP"}}
         ```
         
@@ -194,9 +194,8 @@ else:
         report = raw_res
         
         try:
-            # 容錯 JSON 解析引擎
-            json_match = re.search(r'```json\s*(\{.*?\})\s*
-```', raw_res, re.DOTALL | re.IGNORECASE)
+            # 容錯 JSON 解析引擎 (已修復引號語法錯誤)
+            json_match = re.search(r'```json\s*(\{.*?\})\s*```', raw_res, re.DOTALL | re.IGNORECASE)
             if not json_match:
                 json_match = re.search(r'\{[^{}]*"scores".*?\}', raw_res, re.DOTALL)
                 if json_match:
