@@ -7,7 +7,7 @@ from groq import Groq
 import pandas as pd
 
 # --- 1. 頁面配置與櫻花馬卡龍系視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V15 🌸 (CoT Edition)", page_icon="👑", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V15.2 🌸 (Ultimate Edition)", page_icon="👑", layout="wide")
 
 st.markdown("""
     <style>
@@ -54,7 +54,7 @@ class TAICAMasterCloud:
                     {"role": "user", "content": user_prompt}
                 ],
                 model=self.model,
-                temperature=0.3,
+                temperature=0.3, 
             )
             return chat_completion.choices[0].message.content.strip()
         except Exception as e:
@@ -127,7 +127,7 @@ with st.sidebar:
         st.rerun()
 
 # --- 5. 測驗主流程控制 ---
-# 階段 A: 身分認證登錄 (已修復變數名稱為 v15_init)
+# 階段 A: 身分認證登錄
 if not st.session_state.v15_init:
     st.markdown('<div class="report-card">', unsafe_allow_html=True)
     st.subheader("👋 哈囉！先讓我認識你吧")
@@ -155,97 +155,105 @@ elif st.session_state.step <= 16:
             st.session_state.step += 1
             st.rerun()
 
-# 階段 C: 最終 AI 深度報告 (搭載 Chain-of-Thought 思考鏈)
+# 階段 C: 最終 AI 深度報告 (修復 Streamlit 重新渲染 Bug 與字串擷取)
 else:
-    with st.spinner("✨ 測驗完成！大師正在雲端利用 Chain-of-Thought 思考鏈精算數據，並為你撰寫報告..."):
-        
-       # 🔥 V15.1 終極提示工程：引入絕對計分量表與中立思考鏈
-        analysis_p = f"""
-        受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是權威 AI 心理計量學家。請依據使用者的 16 題回答，嚴謹計算其 MBTI。
+    if 'final_report' not in st.session_state:
+        with st.spinner("✨ 測驗完成！大師正在雲端利用 Chain-of-Thought 思考鏈精算數據..."):
+            
+            analysis_p = f"""
+            受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是權威 AI 心理計量學家。請依據使用者的 16 題回答，嚴謹計算其 MBTI。
 
-        【⚖️ 核心學術要求：絕對計分準則】(系統強制約束)
-        你必須根據以下分數區間來判定字母，總分 100：
-        1. E-I (外向/內向)：0~49分代表 E(外向)；50~100分代表 I(內向)。(越外向分數必須越低)
-        2. S-N (實感/直覺)：0~49分代表 S(實感)；50~100分代表 N(直覺)。(越講求實際分數必須越低)
-        3. T-F (思考/情感)：0~49分代表 T(思考)；50~100分代表 F(情感)。(越講求邏輯分數必須越低)
-        4. J-P (判斷/感知)：0~49分代表 J(判斷)；50~100分代表 P(感知)。(越有計畫分數必須越低)
+            【⚖️ 核心學術要求：絕對計分準則】(系統強制約束)
+            你必須根據以下分數區間來判定字母，總分 100：
+            1. E-I (外向/內向)：0~49分代表 E(外向)；50~100分代表 I(內向)。(越外向分數必須越低)
+            2. S-N (實感/直覺)：0~49分代表 S(實感)；50~100分代表 N(直覺)。(越講求實際分數必須越低)
+            3. T-F (思考/情感)：0~49分代表 T(思考)；50~100分代表 F(情感)。(越講求邏輯分數必須越低)
+            4. J-P (判斷/感知)：0~49分代表 J(判斷)；50~100分代表 P(感知)。(越有計畫分數必須越低)
 
-        【🧠 思考鏈 (Chain-of-Thought) 步驟】
-        步驟 1：開啟 <thought_process> 標籤。
-        步驟 2：逐題分析使用者的回答，判斷其傾向。例如：回答「喜歡跟朋友出門玩」-> 偏向 E，因此 E-I 維度分數應向 0 靠近。
-        步驟 3：加總四個維度的最終分數，並嚴格依照上述【絕對計分準則】得出 4 個字母。
-        步驟 4：關閉 </thought_process> 標籤。
-        步驟 5：輸出標準的 ```json 區塊。
-        步驟 6：撰寫診斷報告。報告內容必須完全符合你算出的 MBTI 字母！如果是 E 人，就必須大力強調其外向、活潑與社交活力！
+            【🧠 思考鏈 (Chain-of-Thought) 步驟】
+            步驟 1：開啟 <thought_process> 標籤。
+            步驟 2：逐題分析使用者的回答，判斷其傾向。例如：回答「喜歡跟朋友出門玩」-> 偏向 E，因此 E-I 維度分數應向 0 靠近。
+            步驟 3：加總四個維度的最終分數，並嚴格依照上述【絕對計分準則】得出 4 個字母。
+            步驟 4：關閉 </thought_process> 標籤。
+            步驟 5：輸出標準的 ```json 區塊。
+            步驟 6：撰寫診斷報告。報告內容必須完全符合你算出的 MBTI 字母！如果是 E 人，就必須大力強調其外向、活潑與社交活力！
 
-        【完美輸出格式範本】(此為中性範例，請依實際回答動態計算)
-        <thought_process>
-        - 題1分析：喜歡聚會，強烈 E 傾向。
-        - 題2分析：看重實用性，S 傾向。
-        - ...逐題分析完畢。
-        - 分數統計: E-I: 20 (判定為E), S-N: 30 (判定為S), T-F: 80 (判定為F), J-P: 10 (判定為J)。最終類型：ESFJ。
-        </thought_process>
+            【完美輸出格式範本】(此為中性範例，請依實際回答動態計算)
+            <thought_process>
+            - 題1分析：喜歡聚會，強烈 E 傾向。
+            - ...逐題分析完畢。
+            - 分數統計: E-I: 20 (判定為E), S-N: 30 (判定為S), T-F: 80 (判定為F), J-P: 10 (判定為J)。最終類型：ESFJ。
+            </thought_process>
 
-        ```json
-        {{"scores": {{"E-I": 20, "S-N": 30, "T-F": 80, "J-P": 10}}, "type": "ESFJ"}}
-        ```
-        
-        ### 🌸 TAICA 專屬人格解析 - (填入受試者暱稱) 🌸
-        
-        【專屬你的閃光點✨】
-        * (根據真實算出的 MBTI 撰寫符合該類型的優點...)
-        
-        【小煩惱與成長建議💡】
-        * (根據真實算出的 MBTI 撰寫貼心建議...)
-        """
-        raw_res = master.call_ai(analysis_p, str(st.session_state.history))
-        
-        default_scores = {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}
-        mbti_type = "未定義"
-        report = raw_res
-        
-        try:
-            json_match = re.search(r'```json\s*(\{.*?\})\s*```', raw_res, re.DOTALL | re.IGNORECASE)
-            if not json_match:
-                json_match = re.search(r'\{[^{}]*"scores".*?\}', raw_res, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group()
-                    if json_str.count('{') > json_str.count('}'): json_str += '}'
-                    data = json.loads(json_str)
-                    report = raw_res.replace(json_match.group(), "").strip()
-            else:
-                data = json.loads(json_match.group(1))
-                report = raw_res.replace(json_match.group(0), "").strip()
+            
+```json
+            {{"scores": {{"E-I": 20, "S-N": 30, "T-F": 80, "J-P": 10}}, "type": "ESFJ"}}
+            ```
+
+### 🌸 TAICA 專屬人格解析 - (填入受試者暱稱) 🌸
+
+【專屬你的閃光點✨】
+* (根據真實算出的 MBTI 撰寫符合該類型的優點...)
+
+【小煩惱與成長建議💡】
+* (根據真實算出的 MBTI 撰寫貼心建議...)
+"""
+raw_res = master.call_ai(analysis_p, str(st.session_state.history))
+
+default_scores = {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}
+mbti_type = "未定義"
+report = raw_res
+
+try:
+    json_match = re.search(r'
+```json\s*(\{.*?\})\s*```', raw_res, re.DOTALL | re.IGNORECASE)
+                if not json_match:
+                    json_match = re.search(r'\{[^{}]*"scores".*?\}', raw_res, re.DOTALL)
+                    if json_match:
+                        json_str = json_match.group()
+                        if json_str.count('{') > json_str.count('}'): json_str += '}'
+                        data = json.loads(json_str)
+                        report = raw_res.replace(json_match.group(), "").strip()
+                else:
+                    data = json.loads(json_match.group(1))
+                    report = raw_res.replace(json_match.group(0), "").strip()
+                    
+                mbti_type = data.get("type", mbti_type)
+                default_scores = data.get("scores", default_scores)
                 
-            mbti_type = data.get("type", mbti_type)
-            default_scores = data.get("scores", default_scores)
+                # 🔥 【終極暴力擷取法】：徹底切除思考過程與幻覺文字
+                if "### 🌸 TAICA" in report:
+                    report = "### 🌸 TAICA" + report.split("### 🌸 TAICA")[1]
+                else:
+                    report = re.sub(r'<thought_process>.*?</thought_process>', '', report, flags=re.DOTALL | re.IGNORECASE).strip()
+            except:
+                pass
             
-            report = re.sub(r'<thought_process>.*?</thought_process>', '', report, flags=re.DOTALL | re.IGNORECASE).strip()
+            st.session_state.final_report = report
+            st.session_state.final_mbti_type = mbti_type
+            st.session_state.final_scores = default_scores
             
-        except:
-            st.warning("⚠️ 喔喔！AI 大腦在計算多維度分數時稍微發散了，但大師已經還原了報告內容！")
+            if not st.session_state.saved_to_board and mbti_type != "未定義":
+                global_board.append({"受試者": st.session_state.nickname, "MBTI類型": mbti_type})
+                st.session_state.saved_to_board = True
+            
+            st.balloons()
+
+    st.markdown('<div class="report-card">', unsafe_allow_html=True)
+    col_l, col_r = st.columns([3, 2])
+    with col_l:
+        st.markdown(st.session_state.final_report)
         
-        if not st.session_state.saved_to_board and mbti_type != "未定義":
-            global_board.append({"受試者": st.session_state.nickname, "MBTI類型": mbti_type})
-            st.session_state.saved_to_board = True
+        download_content = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n專屬類型：{st.session_state.final_mbti_type}\n\n{st.session_state.final_report.replace('#', '')}"
+        st.download_button(
+            label="💌 一鍵下載我的專屬報告",
+            data=download_content,
+            file_name=f"TAICA_MBTI_{st.session_state.nickname}.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
         
-        st.balloons()
-        
-        st.markdown('<div class="report-card">', unsafe_allow_html=True)
-        col_l, col_r = st.columns([3, 2])
-        with col_l:
-            st.markdown(report)
-            
-            download_content = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n專屬類型：{mbti_type}\n\n{report.replace('#', '')}"
-            st.download_button(
-                label="💌 一鍵下載我的專屬報告",
-                data=download_content,
-                file_name=f"TAICA_MBTI_{st.session_state.nickname}.txt",
-                mime="text/plain",
-                use_container_width=True
-            )
-            
-        with col_r:
-            st.plotly_chart(master.draw_radar(default_scores, mbti_type), use_container_width=True)
-            st.markdown(f"<h3 style='text-align: center; color: #5D4037;'>🎉 你的專屬類型：<span style='color:#FF7EB3;'>{mbti_type}</span></h3>", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    with col_r:
+        st.plotly_chart(master.draw_radar(st.session_state.final_scores, st.session_state.final_mbti_type), use_container_width=True)
+        st.markdown(f"<h3 style='text-align: center; color: #5D4037;'>🎉 你的專屬類型：<span style='color:#FF7EB3;'>{st.session_state.final_mbti_type}</span></h3>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
