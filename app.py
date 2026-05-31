@@ -155,7 +155,7 @@ elif st.session_state.step <= 16:
             st.session_state.step += 1
             st.rerun()
 
-# 階段 C: 最終 AI 深度報告 (修復 Streamlit 重新渲染 Bug 與字串擷取)
+# 階段 C: 最終 AI 深度報告
 else:
     if 'final_report' not in st.session_state:
         with st.spinner("✨ 測驗完成！大師正在雲端利用 Chain-of-Thought 思考鏈精算數據..."):
@@ -185,28 +185,27 @@ else:
             - 分數統計: E-I: 20 (判定為E), S-N: 30 (判定為S), T-F: 80 (判定為F), J-P: 10 (判定為J)。最終類型：ESFJ。
             </thought_process>
 
-            
-```json
+            ```json
             {{"scores": {{"E-I": 20, "S-N": 30, "T-F": 80, "J-P": 10}}, "type": "ESFJ"}}
             ```
-
-### 🌸 TAICA 專屬人格解析 - (填入受試者暱稱) 🌸
-
-【專屬你的閃光點✨】
-* (根據真實算出的 MBTI 撰寫符合該類型的優點...)
-
-【小煩惱與成長建議💡】
-* (根據真實算出的 MBTI 撰寫貼心建議...)
-"""
-raw_res = master.call_ai(analysis_p, str(st.session_state.history))
-
-default_scores = {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}
-mbti_type = "未定義"
-report = raw_res
-
-try:
-    json_match = re.search(r'
-```json\s*(\{.*?\})\s*```', raw_res, re.DOTALL | re.IGNORECASE)
+            
+            ### 🌸 TAICA 專屬人格解析 - (填入受試者暱稱) 🌸
+            
+            【專屬你的閃光點✨】
+            * (根據真實算出的 MBTI 撰寫符合該類型的優點...)
+            
+            【小煩惱與成長建議💡】
+            * (根據真實算出的 MBTI 撰寫貼心建議...)
+            """
+            raw_res = master.call_ai(analysis_p, str(st.session_state.history))
+            
+            default_scores = {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}
+            mbti_type = "未定義"
+            report = raw_res
+            
+            try:
+                # 這裡使用了安全的雙引號 r"..." 來防止 Markdown 複製截斷
+                json_match = re.search(r"```json\s*(\{.*?\})\s*```", raw_res, re.DOTALL | re.IGNORECASE)
                 if not json_match:
                     json_match = re.search(r'\{[^{}]*"scores".*?\}', raw_res, re.DOTALL)
                     if json_match:
