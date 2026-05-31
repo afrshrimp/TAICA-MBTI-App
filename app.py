@@ -28,7 +28,9 @@ class TAICAMasterCloud:
             st.error("⚠️ 尚未設定 API Key，請在 Streamlit Cloud 的 Secrets 中設定 GROQ_API_KEY。")
             
         # 使用 Groq 上的 Llama 3 8B 模型
-        self.model = "llama3-8b-8192" 
+        # self.model = "llama3-8b-8192" 已退役
+        # 更新為 Llama 3.1 8B 瞬態模型
+        self.model = "llama-3.1-8b-instant"
         
         self.q_bank = {
             'E-I': ["放假喜歡一個人宅著，還是跟朋友出門去玩？", "到陌生的聚會，你會主動跟人搭話嗎？", "心情不好時，喜歡找人傾訴還是自己消化？", "在人群中，你通常是說話的人還是聽別人說？"],
