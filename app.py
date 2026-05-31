@@ -152,7 +152,8 @@ elif st.session_state.step <= 16:
             st.rerun()
 
 else:
-    if 'final_report' not in st.session_state:
+    # 🛡️ 大師級防禦升級：確保報告與寵物同時存在，否則就重新召喚！
+    if 'final_report' not in st.session_state or 'final_pet' not in st.session_state:
         with st.spinner("✨ 測驗完成！大師正在進行 Fuzzy 模糊邏輯運算，並為你召喚專屬守護神獸..."):
             
             # 🔥 V16：Fuzzy 模糊邏輯與印象寵物生成
