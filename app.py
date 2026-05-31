@@ -5,25 +5,87 @@ import plotly.graph_objects as go
 import random
 from groq import Groq
 import pandas as pd
+import time
 
-# --- 1. 頁面配置與櫻花馬卡龍系視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V16.3 🌸 (Ultimate Edition)", page_icon="👑", layout="wide")
+# --- 1. 頁面配置與進階毛玻璃 (Glassmorphism) 視覺美化 ---
+st.set_page_config(page_title="TAICA MBTI V17.0 🌸 (Glassmorphism)", page_icon="👑", layout="wide")
 
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
-    .stApp { background-color: #FFF5F7; color: #5D4037; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
-    .main-title { color: #FF7EB3; text-align: center; font-size: 2.5rem; font-weight: 900; margin-bottom: 20px; text-shadow: 2px 2px 4px #FFD1DC; }
-    .question-box { background: #FFFFFF; border: 2px solid #FFD1DC; padding: 25px; border-radius: 20px; margin: 20px 0; box-shadow: 0 4px 10px rgba(255, 126, 179, 0.1); }
-    .report-card { background: #FFFFFF; border: 2px dashed #FF9A9E; padding: 30px; border-radius: 25px; color: #5D4037; line-height: 1.8; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05); }
-    .stButton>button { background: linear-gradient(90deg, #FF9A9E 0%, #FECFEF 100%); color: #5D4037; font-weight: bold; border-radius: 30px; width: 100%; border: none; height: 3.5em; box-shadow: 0 4px 10px rgba(255, 154, 158, 0.3); transition: 0.3s; font-size: 1.1rem;}
-    .stButton>button:hover { transform: scale(1.03); box-shadow: 0 6px 15px rgba(255, 154, 158, 0.4); }
-    .stTextInput>div>div>input { border-radius: 15px; border: 1px solid #FFD1DC; }
-    .pet-title { font-size: 2rem; color: #FF7EB3; text-align: center; font-weight: bold; margin-bottom: 15px; }
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=JetBrains+Mono&display=swap');
+    
+    /* 漸層背景與全域字體 */
+    .stApp { 
+        background: linear-gradient(135deg, #FFF0F5 0%, #FFE4E1 100%); 
+        font-family: 'Noto Sans TC', sans-serif; 
+        color: #5D4037;
+    }
+    
+    /* 漸層動態標題 */
+    .main-title { 
+        background: linear-gradient(45deg, #FF7EB3, #FF9A9E, #FF7EB3);
+        background-size: 200% auto;
+        -webkit-background-clip: text; 
+        -webkit-text-fill-color: transparent; 
+        text-align: center; font-size: 3rem; font-weight: 900; 
+        margin-bottom: 10px; 
+        animation: shine 3s linear infinite, fadeInDown 0.8s ease-out;
+    }
+    .subtitle { text-align: center; color: #d87093; font-size: 1.1rem; margin-bottom: 40px; font-weight: 700; }
+    
+    /* 毛玻璃題目卡片 (Glassmorphism) */
+    .question-box { 
+        background: rgba(255, 255, 255, 0.6); 
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.8); 
+        padding: 35px; border-radius: 25px; margin: 20px 0; 
+        box-shadow: 0 8px 32px rgba(255, 126, 179, 0.15); 
+        animation: fadeInUp 0.6s ease-out;
+    }
+    
+    /* 最終報告精緻卡片 */
+    .report-card { 
+        background: #FFFFFF; border: none; padding: 40px; border-radius: 30px; 
+        color: #5D4037; line-height: 1.8; 
+        box-shadow: 0 10px 40px rgba(255, 154, 158, 0.2); 
+        animation: fadeIn 1s ease-in;
+    }
+    
+    /* 漸層按鈕 hover 放縮特效 */
+    .stButton>button { 
+        background: linear-gradient(90deg, #FF9A9E 0%, #FECFEF 100%); 
+        color: #5D4037; font-weight: 900; border-radius: 30px; width: 100%; border: none; 
+        height: 3.5em; box-shadow: 0 4px 15px rgba(255, 154, 158, 0.4); 
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); font-size: 1.15rem;
+    }
+    .stButton>button:hover { 
+        transform: translateY(-3px) scale(1.02); 
+        box-shadow: 0 8px 25px rgba(255, 154, 158, 0.6); 
+    }
+    
+    /* 靈魂神獸專屬呼吸燈特效 */
+    .pet-title { 
+        font-size: 2.2rem; color: #FF7EB3; text-align: center; font-weight: 900; 
+        margin-bottom: 25px; text-shadow: 0 0 15px rgba(255,126,179,0.3);
+        animation: pulse 2.5s infinite ease-in-out;
+    }
+    
+    /* 輸入框美化 */
+    .stTextArea>div>div>textarea { border-radius: 15px; border: 2px solid #FFE4E1; background: rgba(255,255,255,0.9); }
+    .stTextArea>div>div>textarea:focus { border-color: #FF9A9E; box-shadow: 0 0 10px rgba(255, 154, 158, 0.3); }
+    .stTextInput>div>div>input { border-radius: 15px; border: 2px solid #FFE4E1; }
+    
+    /* 定義關鍵影格動畫 */
+    @keyframes shine { to { background-position: 200% center; } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.03); } 100% { transform: scale(1); } }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 🔥 新增：MBTI 官方 16 型人格稱號字典 (零幻覺防禦機制) ---
+# --- 🔥 MBTI 官方 16 型人格稱號字典 ---
 MBTI_TITLES = {
     "INTJ": "建築師", "INTP": "邏輯學家", "ENTJ": "指揮官", "ENTP": "辯論家",
     "INFJ": "提倡者", "INFP": "調停者", "ENFJ": "主人公", "ENFP": "競選者",
@@ -35,7 +97,6 @@ MBTI_TITLES = {
 @st.cache_resource
 def get_global_leaderboard():
     return [] 
-
 global_board = get_global_leaderboard()
 
 # --- 3. 核心 AI 引擎 ---
@@ -82,87 +143,100 @@ class TAICAMasterCloud:
         fig = go.Figure()
         fig.add_trace(go.Scatterpolar(
             r=values, theta=categories, fill='toself',
-            fillcolor='rgba(255, 154, 158, 0.4)', line=dict(color='#FF7EB3', width=3),
-            marker=dict(color='#FF7EB3', size=8), name=f"類型: {mbti_type}"
+            fillcolor='rgba(255, 154, 158, 0.45)', line=dict(color='#FF7EB3', width=3),
+            marker=dict(color='#FF7EB3', size=10, symbol='diamond'), name=f"類型: {mbti_type}"
         ))
         fig.update_layout(
-            polar=dict(radialaxis=dict(visible=True, range=[0, 100], gridcolor="#FFE4E1"),
-                       angularaxis=dict(gridcolor="#FFE4E1", color="#5D4037")),
-            paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#5D4037"),
-            margin=dict(l=30, r=30, t=30, b=30)
+            polar=dict(radialaxis=dict(visible=True, range=[0, 100], gridcolor="rgba(255, 154, 158, 0.3)"),
+                       angularaxis=dict(gridcolor="rgba(255, 154, 158, 0.3)", color="#5D4037", font=dict(size=13, weight="bold"))),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#5D4037"),
+            margin=dict(l=40, r=40, t=40, b=40)
         )
         return fig
 
 # --- 4. 狀態管理與路由 ---
-st.markdown('<h1 class="main-title">✨ 懂你的 16 型人格小助手 ✨</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-title">✨ TAICA 靈魂神獸測驗 ✨</h1>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">AI 驅動・深度探索你的 16 型隱藏人格</div>', unsafe_allow_html=True)
 
-if 'v16_init' not in st.session_state:
+if 'v17_init' not in st.session_state:
     master_temp = TAICAMasterCloud()
     all_qs = [{"dim": dim, "q": q} for dim, qs in master_temp.q_bank.items() for q in qs]
     random.shuffle(all_qs)
     
     st.session_state.update({
-        'v16_init': False, 'step': 1, 'history': [], 'nickname': '', 'gender': '',
+        'v17_init': False, 'step': 1, 'history': [], 'nickname': '', 'gender': '',
         'questions': all_qs, 'saved_to_board': False
     })
 
 master = TAICAMasterCloud()
 
-# --- 側邊欄 ---
+# --- 側邊欄：進階儀表板 ---
 with st.sidebar:
-    st.markdown("### 🎀 測驗小檔案")
-    if st.session_state.v16_init:
-        st.write(f"🧸 暱稱: **{st.session_state.nickname}**")
-        st.write(f"✨ 性別: **{st.session_state.gender}**")
+    st.markdown("### 🎀 專屬探索檔案")
+    if st.session_state.v17_init:
+        st.write(f"🧸 探險家: **{st.session_state.nickname}**")
+        st.write(f"✨ 特質: **{st.session_state.gender}**")
         st.progress(min(st.session_state.step / 16, 1.0))
-        st.write(f"解析進度: {min(st.session_state.step, 16)} / 16 題")
+        st.write(f"🔮 探索進度: {min(st.session_state.step, 16)} / 16 題")
     
     st.markdown("---")
-    st.markdown("### 🏆 班級 MBTI 統計牆")
+    st.markdown("### 🏆 班級神獸圖鑑 (Live)")
     if len(global_board) > 0:
         df = pd.DataFrame(global_board)
         st.dataframe(df.tail(5).iloc[::-1], hide_index=True, use_container_width=True)
         type_counts = df['MBTI類型'].value_counts()
         st.bar_chart(type_counts, color="#FF7EB3")
     else:
-        st.info("快成為全班第一個測出神獸的人！")
+        st.info("圖鑑空空如也，快成為全班第一隻登錄的神獸！")
         
     st.markdown("---")
-    if st.button("🔄 重新開始測驗", use_container_width=True):
+    if st.button("🔄 重新展開旅程", use_container_width=True):
         for k in st.session_state.keys(): del st.session_state[k]
         st.rerun()
 
 # --- 5. 測驗主流程 ---
-if not st.session_state.v16_init:
-    st.markdown('<div class="report-card">', unsafe_allow_html=True)
-    st.subheader("👋 哈囉！先讓我認識你吧")
-    c1, c2 = st.columns(2)
-    with c1: nick = st.text_input("怎麼稱呼你呢？", placeholder="輸入暱稱")
-    with c2: gend = st.radio("你的性別是？", ["女孩", "男孩"], horizontal=True)
-    if st.button("🌸 開始探索專屬神獸 🌸"):
-        if nick:
-            st.session_state.nickname, st.session_state.gender, st.session_state.v16_init = nick, gend, True
-            st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+# 為了讓畫面在寬螢幕下更集中、更好看，使用 columns 進行版面置中控制
+main_c1, main_c2, main_c3 = st.columns([1, 4, 1])
 
-elif st.session_state.step <= 16:
-    current_q_text = st.session_state.questions[st.session_state.step - 1]['q']
-    
-    st.markdown(f'<div class="question-box"><h4>題 {st.session_state.step} / 16</h4><p style="font-size:1.3rem; font-weight:bold; color: #5D4037;">{current_q_text}</p></div>', unsafe_allow_html=True)
-    
-    with st.form(key=f"v16_form_{st.session_state.step}"):
-        ans = st.text_input("你的直覺是什麼呢？", placeholder="隨心所欲地寫下想法...", key=f"input_{st.session_state.step}")
-        submit = st.form_submit_button("送出答案 💌")
+with main_c2:
+    if not st.session_state.v17_init:
+        st.markdown('<div class="question-box">', unsafe_allow_html=True)
+        st.subheader("👋 哈囉！準備好遇見你的靈魂神獸了嗎？")
+        c1, c2 = st.columns(2)
+        with c1: nick = st.text_input("怎麼稱呼你呢？", placeholder="輸入你的專屬暱稱")
+        with c2: gend = st.radio("你的角色設定是？", ["女孩 🌸", "男孩 🍃"], horizontal=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("✨ 點擊開始探索 ✨"):
+            if nick:
+                st.session_state.nickname, st.session_state.gender, st.session_state.v17_init = nick, gend, True
+                st.toast(f"歡迎來到 TAICA，{nick}！旅程開始囉 🚀")
+                time.sleep(0.5)
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    elif st.session_state.step <= 16:
+        current_q_text = st.session_state.questions[st.session_state.step - 1]['q']
         
-        if submit and ans:
-            st.session_state.history.append({"q": current_q_text, "a": ans})
-            st.session_state.step += 1
-            st.rerun()
+        # 進度條美化
+        st.progress(st.session_state.step / 16.0)
+        
+        st.markdown(f'<div class="question-box"><h4 style="color: #FF9A9E; margin-bottom: 5px;">第 {st.session_state.step} 題 / 共 16 題</h4><p style="font-size:1.5rem; font-weight:900; color: #5D4037; line-height: 1.5;">{current_q_text}</p></div>', unsafe_allow_html=True)
+        
+        with st.form(key=f"v17_form_{st.session_state.step}"):
+            ans = st.text_area("你的直覺是什麼呢？(越詳細 AI 算得越準喔！)", placeholder="靜下心來，隨心所欲地寫下想法...", key=f"input_{st.session_state.step}", height=120)
+            submit = st.form_submit_button("送出心聲 💌")
+            
+            if submit and ans:
+                st.session_state.history.append({"q": current_q_text, "a": ans})
+                st.session_state.step += 1
+                st.rerun()
 
-else:
+# 滿版顯示分析報告 (跳出 main_c2 的限制)
+if st.session_state.get('v17_init') and st.session_state.step > 16:
     if 'final_report' not in st.session_state or 'final_pet' not in st.session_state:
         with st.spinner("✨ 測驗完成！大師正在進行 Fuzzy 模糊邏輯運算，並為你召喚專屬守護神獸..."):
             
+            # --- 以下為完整保留的後台 AI 核心邏輯 ---
             analysis_p = f"""
             受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學(Fuzzy Logic)』與『社群遊戲化』的權威 AI。
 
@@ -206,8 +280,7 @@ else:
             raw_res = master.call_ai(analysis_p, str(st.session_state.history))
             
             default_scores = {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}
-            mbti_type = "未定義"
-            pet_name = "神祕可愛的小精靈 🧚"
+            mbti_type, pet_name = "未定義", "神祕可愛的小精靈 🧚"
             report = raw_res
             
             try:
@@ -258,23 +331,23 @@ else:
                 st.session_state.saved_to_board = True
             
             st.balloons()
+            st.toast("🎉 你的專屬神獸已降臨！")
 
+    # --- 渲染超美終極報告 ---
     st.markdown('<div class="report-card">', unsafe_allow_html=True)
     
-    st.markdown(f'<div class="pet-title">你的靈魂神獸：{st.session_state.final_pet}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="pet-title">你的靈魂神獸是...<br>✨ {st.session_state.final_pet} ✨</div>', unsafe_allow_html=True)
     
-    col_l, col_r = st.columns([3, 2])
+    col_l, col_r = st.columns([1.2, 1])
     with col_l:
         st.markdown(st.session_state.final_report)
         
-        st.markdown("---")
+        st.markdown("<br><hr>", unsafe_allow_html=True)
         st.markdown("#### 💌 匯出你的專屬報告 (與朋友分享)")
         
-        # 🔥 動態抓取官方稱號，若無則顯示「神祕類型」
         current_title = MBTI_TITLES.get(st.session_state.final_mbti_type, "神祕類型")
         
         export_txt = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n專屬類型：{st.session_state.final_mbti_type} ({current_title})\n靈魂神獸：{st.session_state.final_pet}\n\n{st.session_state.final_report.replace('#', '')}"
-        
         export_md = f"# TAICA 專屬人格解析 - {st.session_state.nickname}\n\n**專屬類型**：{st.session_state.final_mbti_type} ({current_title})\n**靈魂神獸**：{st.session_state.final_pet}\n\n{st.session_state.final_report}\n\n*(提示：使用瀏覽器打開此 Markdown 檔案，按下 Ctrl+P 即可列印成精美的 PDF 報告！)*"
         
         dl_c1, dl_c2 = st.columns(2)
@@ -285,7 +358,6 @@ else:
             
     with col_r:
         st.plotly_chart(master.draw_radar(st.session_state.final_scores, st.session_state.final_mbti_type), use_container_width=True)
-        
-        # 🔥 網頁 UI 也同步顯示稱號！
-        st.markdown(f"<h3 style='text-align: center; color: #5D4037;'>🎉 專屬類型：<span style='color:#FF7EB3;'>{st.session_state.final_mbti_type} ({current_title})</span></h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align: center; color: #5D4037; animation: fadeIn 2s ease-in;'>🎉 專屬類型：<br><span style='color:#FF7EB3; font-size: 2.5rem; font-weight: 900;'>{st.session_state.final_mbti_type}</span><br>({current_title})</h3>", unsafe_allow_html=True)
+    
     st.markdown('</div>', unsafe_allow_html=True)
