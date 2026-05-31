@@ -163,6 +163,7 @@ else:
     if 'final_report' not in st.session_state or 'final_pet' not in st.session_state:
         with st.spinner("✨ 測驗完成！大師正在進行 Fuzzy 模糊邏輯運算，並為你召喚專屬守護神獸..."):
             
+           # 🔥 V16.3 提示詞修復：防抄襲機制與變數佔位符
             analysis_p = f"""
             受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學(Fuzzy Logic)』與『社群遊戲化』的權威 AI。
 
@@ -175,11 +176,14 @@ else:
             請根據受試者的 MBTI 與回答特質，為他設計一隻專屬的「印象寵物 (Spirit Animal)」。
             格式必須為：形容詞 + 動物名稱 + Emoji。
 
-            【🧠 思考鏈 (CoT)】
+            【🧠 思考鏈 (CoT) 與輸出規範】
             步驟 1：開啟 <thought_process> 標籤，進行模糊邏輯運算。
             步驟 2：關閉 </thought_process> 標籤。
-            步驟 3：嚴格輸出下方的 ```json 區塊 (必須包含 pet 欄位)。
+            步驟 3：嚴格輸出下方的 ```json 區塊。
             步驟 4：撰寫溫柔的診斷報告。
+
+            【⚠️ 絕對警告：禁止抄襲】
+            下方的 JSON 範本只是「格式參考」，你絕對不可以輸出 "XXXX" 或 "形容詞+動物+Emoji"，你必須填入你親自計算出來的真實分數、4個大寫字母與設計出的寵物！
 
             【完美輸出格式範本】
             <thought_process>
@@ -187,13 +191,13 @@ else:
             </thought_process>
 
             ```json
-            {{"scores": {{"E-I": 25, "S-N": 35, "T-F": 80, "J-P": 15}}, "type": "ESFJ", "pet": "熱情溫暖的黃金獵犬 🦮"}}
+            {{"scores": {{"E-I": 85, "S-N": 30, "T-F": 70, "J-P": 20}}, "type": "XXXX", "pet": "形容詞+動物+Emoji"}}
             ```
             
             ### 🌸 TAICA 專屬人格解析 - {st.session_state.nickname} 🌸
             
             【🐾 你的專屬印象寵物】
-            你是**(填入寵物名稱)**！(用兩句話溫柔解釋為什麼性格像這隻動物)
+            你是**(填入你生成的專屬寵物)**！(用兩句話溫柔解釋為什麼性格像這隻動物)
             
             【✨ 專屬你的閃光點】
             * (撰寫符合其 MBTI 的優點)
