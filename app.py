@@ -7,7 +7,7 @@ from groq import Groq
 import pandas as pd
 
 # --- 1. 頁面配置與櫻花馬卡龍系視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V16 🌸 (Commercial Edition)", page_icon="👑", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V16.1 🌸 (Beta Test Edition)", page_icon="👑", layout="wide")
 
 st.markdown("""
     <style>
@@ -55,7 +55,7 @@ class TAICAMasterCloud:
                     {"role": "user", "content": user_prompt}
                 ],
                 model=self.model,
-                temperature=0.4, # 稍微調高溫度以增加生成印象寵物的創意
+                temperature=0.4, 
             )
             return chat_completion.choices[0].message.content.strip()
         except Exception as e:
@@ -152,23 +152,21 @@ elif st.session_state.step <= 16:
             st.rerun()
 
 else:
-    # 🛡️ 大師級防禦升級：確保報告與寵物同時存在，否則就重新召喚！
     if 'final_report' not in st.session_state or 'final_pet' not in st.session_state:
         with st.spinner("✨ 測驗完成！大師正在進行 Fuzzy 模糊邏輯運算，並為你召喚專屬守護神獸..."):
             
-            # 🔥 V16：Fuzzy 模糊邏輯與印象寵物生成
+            # 🔥 提示詞修復：加入動態名稱變數與「報告結束」錨點
             analysis_p = f"""
             受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學(Fuzzy Logic)』與『社群遊戲化』的權威 AI。
 
             【⚖️ 核心技術：Fuzzy 模糊邏輯計分】
             人類的性格不是非黑即白。請在思考時，對每個回答進行「模糊程度」評分 (0~100)。
             - 0~49 代表偏向 E/S/T/J；50~100 代表偏向 I/N/F/P。
-            - 例如：「我喜歡在家，但偶爾也想找人講話」這句話的 E-I 維度可能就是 65 (偏向內向但含有外向成分)。
             最後綜合 16 題的模糊權重，給出最終分數。
 
             【🐾 社群分享：召喚印象寵物】
             請根據受試者的 MBTI 與回答特質，為他設計一隻專屬的「印象寵物 (Spirit Animal)」。
-            格式必須為：形容詞 + 動物名稱 + Emoji (例如：慵懶高貴的布偶貓 🐈)。
+            格式必須為：形容詞 + 動物名稱 + Emoji。
 
             【🧠 思考鏈 (CoT)】
             步驟 1：開啟 <thought_process> 標籤，進行模糊邏輯運算。
@@ -185,16 +183,18 @@ else:
             {{"scores": {{"E-I": 25, "S-N": 35, "T-F": 80, "J-P": 15}}, "type": "ESFJ", "pet": "熱情溫暖的黃金獵犬 🦮"}}
             ```
             
-            ### 🌸 TAICA 專屬人格解析 - (受試者暱稱) 🌸
+            ### 🌸 TAICA 專屬人格解析 - {st.session_state.nickname} 🌸
             
             【🐾 你的專屬印象寵物】
-            你是**(填入寵物名稱)**！(用兩句話溫柔解釋為什麼他的性格像這隻動物，這部分要能打動人心，適合他分享給朋友看)
+            你是**(填入寵物名稱)**！(用兩句話溫柔解釋為什麼性格像這隻動物)
             
             【✨ 專屬你的閃光點】
-            * (撰寫符合其 MBTI 的優點...)
+            * (撰寫符合其 MBTI 的優點)
             
             【💡 小煩惱與成長建議】
-            * (撰寫貼心建議...)
+            * (撰寫貼心建議)
+            
+            【報告結束】
             """
             raw_res = master.call_ai(analysis_p, str(st.session_state.history))
             
@@ -204,7 +204,6 @@ else:
             report = raw_res
             
             try:
-                # 容錯 JSON 解析，並捕捉 pet 變數
                 json_match = re.search(r"```json\s*(\{.*?\})\s*```", raw_res, re.DOTALL | re.IGNORECASE)
                 if not json_match:
                     json_match = re.search(r'\{[^{}]*"scores".*?\}', raw_res, re.DOTALL)
@@ -221,11 +220,17 @@ else:
                 default_scores = data.get("scores", default_scores)
                 pet_name = data.get("pet", pet_name)
                 
-                # 切除幻覺文字
+                # 🔥 頭尾雙殺防禦法：徹底清除所有廢話與程式碼幻覺
                 if "### 🌸 TAICA" in report:
                     report = "### 🌸 TAICA" + report.split("### 🌸 TAICA")[1]
                 else:
                     report = re.sub(r'<thought_process>.*?</thought_process>', '', report, flags=re.DOTALL | re.IGNORECASE).strip()
+                
+                if "【報告結束】" in report:
+                    report = report.split("【報告結束】")[0].strip()
+                    
+                report = re.sub(r'```[a-zA-Z]*', '', report).strip()
+                
             except:
                 pass
             
@@ -242,7 +247,6 @@ else:
 
     st.markdown('<div class="report-card">', unsafe_allow_html=True)
     
-    # 🔥 顯示印象寵物 (社群分享的核心)
     st.markdown(f'<div class="pet-title">你的靈魂神獸：{st.session_state.final_pet}</div>', unsafe_allow_html=True)
     
     col_l, col_r = st.columns([3, 2])
@@ -252,7 +256,6 @@ else:
         st.markdown("---")
         st.markdown("#### 💌 匯出你的專屬報告 (與朋友分享)")
         
-        # 多格式匯出功能
         export_txt = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n專屬類型：{st.session_state.final_mbti_type}\n靈魂神獸：{st.session_state.final_pet}\n\n{st.session_state.final_report.replace('#', '')}"
         
         export_md = f"# TAICA 專屬人格解析 - {st.session_state.nickname}\n\n**專屬類型**：{st.session_state.final_mbti_type}\n**靈魂神獸**：{st.session_state.final_pet}\n\n{st.session_state.final_report}\n\n*(提示：使用瀏覽器打開此 Markdown 檔案，按下 Ctrl+P 即可列印成精美的 PDF 報告！)*"
