@@ -5,9 +5,10 @@ import random
 from groq import Groq
 import pandas as pd
 import time
+import base64
 
 # --- 1. 頁面配置與視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V19.0 🌸 (Ironclad JSON Edition)", page_icon="👑", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V19.1 🌸 (Stable Download Edition)", page_icon="👑", layout="wide")
 
 st.markdown("""
     <style>
@@ -31,6 +32,17 @@ st.markdown("""
     }
     .stButton>button:hover { background: #FF7EB3; color: #FFFFFF; transform: translateY(-2px); border-color: #FF7EB3; }
     .pet-title { font-size: 2.2rem; color: #FF7EB3; text-align: center; font-weight: 900; margin-bottom: 25px; }
+    
+    /* 🔥 V19.1 新增：完美解決下載刷新 Bug 的自訂按鈕 CSS */
+    .dl-btn {
+        background: #FFFFFF; color: #FF7EB3 !important; font-weight: 700; border-radius: 20px; 
+        border: 2px solid #FFD1DC; padding: 10px; box-shadow: 0 4px 10px rgba(255, 154, 158, 0.1); 
+        transition: 0.3s; width: 100%; display: block; text-align: center; text-decoration: none;
+        box-sizing: border-box; font-family: 'Noto Sans TC', sans-serif; margin-top: 10px;
+    }
+    .dl-btn:hover {
+        background: #FF7EB3; color: #FFFFFF !important; transform: translateY(-2px); border-color: #FF7EB3; text-decoration: none;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -40,6 +52,11 @@ MBTI_TITLES = {
     "ISTJ": "物流師", "ISFJ": "守衛者", "ESTJ": "總經理", "ESFJ": "執政官",
     "ISTP": "鑑賞家", "ISFP": "探險家", "ESTP": "企業家", "ESFP": "表演者"
 }
+
+# 🔥 V19.1 新增：將檔案編碼為 Base64 的前端下載產生器
+def create_download_link(data, filename, text, emoji):
+    b64 = base64.b64encode(data.encode('utf-8')).decode()
+    return f'<a href="data:file/txt;base64,{b64}" download="{filename}" class="dl-btn">{emoji} {text}</a>'
 
 @st.cache_resource
 def get_global_leaderboard():
@@ -85,7 +102,6 @@ class TAICAMasterCloud:
 
     def call_ai(self, system_prompt, user_prompt):
         try:
-            # 🔥 終極殺手鐧：啟動 response_format={"type": "json_object"} 強制 API 只回傳 JSON
             chat_completion = self.client.chat.completions.create(
                 messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                 model=self.model, temperature=0.4, max_tokens=2048,
@@ -206,7 +222,6 @@ if st.session_state.get('v19_init') and st.session_state.step > 16:
     if not st.session_state.final_report:
         with st.spinner("✨ 測驗完成！大師正在進行 Fuzzy 模糊邏輯運算，並為你召喚專屬守護神獸..."):
             
-            # 🔥 極致穩定防呆提示詞：要求 AI 把所有資訊都塞進 JSON 物件中
             analysis_p = f"""
             受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學(Fuzzy Logic)』與『社群遊戲化』的權威 AI。
             請分析受試者的 16 題回答。對每個回答進行「模糊程度」評分 (0~100)。
@@ -232,15 +247,12 @@ if st.session_state.get('v19_init') and st.session_state.step > 16:
             """
             raw_res = master.call_ai(analysis_p, str(st.session_state.history))
             
-            # 🔥 原生 JSON 解析，告別麻煩的正則表達式
             try:
                 data = json.loads(raw_res)
                 mbti_type = data.get("type", "未定義")
                 default_scores = data.get("scores", {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50})
                 pet_name = data.get("pet", "神祕可愛的小精靈 🧚")
                 report = data.get("report", "報告生成失敗，請再試一次。")
-                
-                # 依然為你在終端機保留了完美的後台監控日誌
                 print(f"\n=== [後台監控] {st.session_state.nickname} 運算日誌 ===\n{data.get('thought_process', '無運算日誌')}\n====================\n")
                 
             except Exception as e:
@@ -261,7 +273,7 @@ if st.session_state.get('v19_init') and st.session_state.step > 16:
             st.toast("🎉 你的專屬神獸已降臨！")
             st.rerun()
 
-    # --- 渲染報告 ---
+    # --- 渲染報告與前端下載連結 ---
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.markdown(f'<div class="pet-title">你的靈魂神獸是...<br>✨ {st.session_state.final_pet} ✨</div>', unsafe_allow_html=True)
     
@@ -270,8 +282,18 @@ if st.session_state.get('v19_init') and st.session_state.step > 16:
         st.markdown(st.session_state.final_report)
         st.markdown("<br><hr>", unsafe_allow_html=True)
         current_title = MBTI_TITLES.get(st.session_state.final_mbti_type, "神祕類型")
+        
+        export_txt = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n專屬類型：{st.session_state.final_mbti_type} ({current_title})\n靈魂神獸：{st.session_state.final_pet}\n\n{st.session_state.final_report.replace('#', '')}"
         export_md = f"# TAICA 專屬人格解析 - {st.session_state.nickname}\n\n**專屬類型**：{st.session_state.final_mbti_type} ({current_title})\n**靈魂神獸**：{st.session_state.final_pet}\n\n{st.session_state.final_report}"
-        st.download_button("🖨️ 下載排版列印版 (.md)", data=export_md, file_name=f"TAICA_{st.session_state.nickname}.md", mime="text/markdown", use_container_width=True)
+        
+        dl_c1, dl_c2 = st.columns(2)
+        # 🔥 V19.1 新增：套用 HTML 前端下載，避開 Streamlit 的重新渲染機制
+        with dl_c1:
+            txt_link = create_download_link(export_txt, f"TAICA_{st.session_state.nickname}.txt", "下載純文字版 (.txt)", "📝")
+            st.markdown(txt_link, unsafe_allow_html=True)
+        with dl_c2:
+            md_link = create_download_link(export_md, f"TAICA_{st.session_state.nickname}.md", "下載排版列印版 (.md)", "🖨️")
+            st.markdown(md_link, unsafe_allow_html=True)
             
     with col_r:
         st.plotly_chart(master.draw_radar(st.session_state.final_scores, st.session_state.final_mbti_type), use_container_width=True)
