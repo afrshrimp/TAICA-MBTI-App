@@ -8,7 +8,7 @@ import time
 import base64
 
 # --- 1. 頁面配置與視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V20.0 🌸 (Ultimate Pet Edition)", page_icon="🐾", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V20.1 🌸 (Smart Scoring Edition)", page_icon="🐾", layout="wide")
 
 st.markdown("""
     <style>
@@ -33,7 +33,6 @@ st.markdown("""
     .stButton>button:hover { background: #FF7EB3; color: #FFFFFF; transform: translateY(-3px); border-color: #FF7EB3; box-shadow: 0 6px 15px rgba(255, 154, 158, 0.3);}
     .pet-title { font-size: 2.5rem; color: #FF7EB3; text-align: center; font-weight: 900; margin-bottom: 10px; text-shadow: 0 0 15px rgba(255,126,179,0.4); animation: pulse 2s infinite;}
     
-    /* IG 限動卡片專屬 CSS */
     .ig-story-card {
         background: linear-gradient(135deg, #FF9A9E 0%, #FECFEF 100%);
         border-radius: 30px; padding: 40px 20px; text-align: center; color: white;
@@ -98,15 +97,28 @@ class TAICAMasterCloud:
             ]
         }
 
-    def call_ai(self, system_prompt, user_prompt):
+    # 🔥 V20.1 修復：動態 JSON 模式切換，防 400 報錯
+    def call_ai(self, system_prompt, user_prompt, use_json=True):
         try:
-            chat_completion = self.client.chat.completions.create(
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-                model=self.model, temperature=0.5, max_tokens=2048, response_format={"type": "json_object"} 
-            )
+            kwargs = {
+                "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+                "model": self.model,
+                "temperature": 0.5,
+                "max_tokens": 2048
+            }
+            if use_json:
+                kwargs["response_format"] = {"type": "json_object"}
+                # 防呆確保提示詞有 json，避免 Groq 直接報錯 400
+                if "json" not in system_prompt.lower() and "json" not in user_prompt.lower():
+                    kwargs["messages"][0]["content"] += "\nOutput in JSON format."
+            
+            chat_completion = self.client.chat.completions.create(**kwargs)
             return chat_completion.choices[0].message.content.strip()
         except Exception as e:
-            return f'{{"report": "API 異常：{e}", "type": "未知", "pet": "迷路的小狗 🐶", "scores": {{"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}}}}'
+            if use_json:
+                return f'{{"report": "API 異常：{e}", "type": "未知", "pet": "迷路的小狗 🐶", "scores": {{"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}}}}'
+            else:
+                return f"大師冥想中，請稍後再試！({e})"
 
     def draw_radar(self, scores, mbti_type):
         categories = ['E-I(外向/內向)', 'S-N(實感/直覺)', 'T-F(思考/情感)', 'J-P(判斷/感知)']
@@ -191,18 +203,24 @@ with tab1:
                 st.session_state.step += 1
                 st.rerun()
 
-        # 測驗完成報告區
         if st.session_state.get('v20_init') and st.session_state.step > 16:
             if not st.session_state.final_report:
                 with st.spinner("🐾 測驗完成！大師正在進行模糊運算，為你召喚專屬寵物..."):
                     
-                    # 🔥 隱藏彩蛋 Prompt：如果很隨和就出水豚！
+                    # 🔥 V20.1 修復：明確指示 AI「越外向分數要越低」，杜絕反向計分災難！
                     analysis_p = f"""
                     受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學』的權威 AI。
-                    請分析 16 題回答。對每個回答評分 (0~49偏向 E/S/T/J；50~100偏向 I/N/F/P)。
+                    請分析 16 題回答。分數範圍必須在 0~100 之間。
+                    
+                    【⚖️ 絕對計分防呆指南 (不要算反！)】
+                    AI 很容易把分數算反，請嚴格遵守以下對應：
+                    1. E-I (外向/內向)：越「外向/愛社交」，分數要越【低】(0~49)；越「內向/愛獨處」，分數要越【高】(50~100)。
+                    2. S-N (實感/直覺)：越「務實/看細節」，分數要越【低】(0~49)；越「憑感覺/看整體」，分數要越【高】(50~100)。
+                    3. T-F (思考/情感)：越「講邏輯/理智」，分數要越【低】(0~49)；越「顧感受/感性」，分數要越【高】(50~100)。
+                    4. J-P (判斷/感知)：越「愛計畫/按部就班」，分數要越【低】(0~49)；越「隨性/看心情」，分數要越【高】(50~100)。
                     
                     【🎁 隱藏彩蛋機制 (極機密)】
-                    如果受試者的回答展現出「極度隨和、情緒穩定、喜歡自己消化、不愛社交」等高比例的 I 與 P 特質，請務必將專屬寵物設定為超稀有的：『佛系大水豚 🦦』！
+                    如果受試者展現出「極度隨和、情緒穩定、佛系」特質，請務必將專屬寵物設定為：『佛系大水豚 🦦』！
                     
                     【⚠️ 系統強制輸出規範 (JSON Mode)】
                     必須只輸出一個合法 JSON，包含：
@@ -212,7 +230,7 @@ with tab1:
                     4. "pet": 專屬寵物 (格式：形容詞 + 動物 + Emoji)。
                     5. "report": 給使用者的完整解析報告。排版包含「🐾 你的專屬寵物」、「✨ 專屬閃光點」、「💡 成長建議」。
                     """
-                    raw_res = master.call_ai(analysis_p, str(st.session_state.history))
+                    raw_res = master.call_ai(analysis_p, str(st.session_state.history), use_json=True)
                     
                     try:
                         data = json.loads(raw_res)
@@ -223,21 +241,20 @@ with tab1:
                         print(f"\n=== [後台監控] {st.session_state.nickname} 運算日誌 ===\n{data.get('thought_process', '無日誌')}\n")
                     except Exception as e:
                         mbti_type, pet_name, default_scores = "未定義", "萌萌小精靈 🧚", {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}
-                        report = f"系統解析中發生插曲！(錯誤碼: {e})"
+                        report = f"系統解析中發生插曲！(錯誤碼: {e})\n{raw_res}"
                     
                     st.session_state.update({'final_report': report, 'final_mbti_type': mbti_type, 'final_scores': default_scores, 'final_pet': pet_name})
                     if not st.session_state.saved_to_board and mbti_type != "未定義":
                         global_board.append({"受試者": st.session_state.nickname, "MBTI類型": mbti_type, "寵物": pet_name})
                         st.session_state.saved_to_board = True
                     
-                    st.balloons() # 抽卡成功特效
+                    st.balloons()
                     st.toast("🎉 你的專屬萌寵已降臨！")
                     st.rerun()
 
             st.markdown('<div class="glass-card">', unsafe_allow_html=True)
             st.markdown(f'<div class="pet-title">✨ 召喚成功 ✨<br>你的專屬寵物是：{st.session_state.final_pet}</div>', unsafe_allow_html=True)
             
-            # --- 📸 IG 限動分享卡產生器 ---
             current_title = MBTI_TITLES.get(st.session_state.final_mbti_type, "神祕類型")
             pet_emoji = st.session_state.final_pet.split(" ")[-1] if " " in st.session_state.final_pet else "🐾"
             ig_html = f"""
@@ -264,7 +281,7 @@ with tab1:
                         st.rerun()
             with col_r:
                 st.plotly_chart(master.draw_radar(st.session_state.final_scores, st.session_state.final_mbti_type), use_container_width=True)
-                st.markdown(ig_html, unsafe_allow_html=True) # 顯示 IG 卡片
+                st.markdown(ig_html, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
 with tab2:
@@ -279,7 +296,8 @@ with tab2:
     if st.button("🔮 計算羈絆指數", use_container_width=True):
         with st.spinner("AI 正在解析兩隻寵物的相處模式..."):
             bond_prompt = f"請以輕鬆可愛的語氣，分析 {my_mbti} 與 {friend_mbti} 的相處契合度。輸出包含：1. 契合度分數(1~100) 2. 簡短相處優勢 3. 潛在小摩擦。限 150 字。"
-            bond_result = master.call_ai("你是 MBTI 戀愛與人際關係大師，回答簡短精確。", bond_prompt)
+            # 🔥 V20.1 修復：將 use_json 設為 False，防範 Groq API 報 400 錯誤
+            bond_result = master.call_ai("你是 MBTI 戀愛與人際關係大師，回答簡短精確。", bond_prompt, use_json=False)
             st.success("計算完成！")
             st.info(bond_result)
     st.markdown('</div>', unsafe_allow_html=True)
