@@ -8,7 +8,7 @@ import time
 import base64
 
 # --- 1. 頁面配置與視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V20.4 🌸 (Type-Safe Edition)", page_icon="🐾", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V20.5 🌸 (Smart Parser Edition)", page_icon="🐾", layout="wide")
 
 st.markdown("""
     <style>
@@ -216,26 +216,27 @@ with tab1:
             if not st.session_state.final_report:
                 with st.spinner("🐾 測驗完成！大師正在進行模糊運算，為你召喚專屬寵物..."):
                     
+                    # 🔥 V20.5 提示詞升級：嚴格要求 report 必須是 STRING
                     analysis_p = f"""
                     受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學』的權威 AI。
                     請分析 16 題回答。分數範圍必須在 0~100 之間。
                     
-                    【⚖️ 絕對計分防呆指南 (不要算反！)】
-                    1. E-I (外向/內向)：越「外向/愛社交」，分數要越【低】；越「內向/愛獨處」，分數要越【高】。
-                    2. S-N (實感/直覺)：越「務實/看細節」，分數要越【低】；越「憑感覺/看整體」，分數要越【高】。
-                    3. T-F (思考/情感)：越「講邏輯/理智」，分數要越【低】；越「顧感受/感性」，分數要越【高】。
-                    4. J-P (判斷/感知)：越「愛計畫/按部就班」，分數要越【低】；越「隨性/看心情」，分數要越【高】。
+                    【⚖️ 絕對計分防呆指南】
+                    1. E-I: 越「外向/社交」分數越【低】；越「內向/獨處」分數越【高】。
+                    2. S-N: 越「務實/細節」分數越【低】；越「直覺/整體」分數越【高】。
+                    3. T-F: 越「邏輯/理智」分數越【低】；越「感性/情感」分數越【高】。
+                    4. J-P: 越「計畫/規律」分數越【低】；越「隨性/彈性」分數越【高】。
                     
                     【🐾 寵物多樣性強制指令】
-                    請挑選最符合的專屬動物（例如：雪鴞、蜜獾、六角恐龍、耳廓狐、黑豹等）。絕對禁止每次都給貓狗！
+                    請挑選最符合特質的專屬動物（如雪鴞、蜜獾、耳廓狐、黑豹等）。禁止重複只給貓狗！
                     
                     【⚠️ 系統強制輸出規範 (JSON Mode)】
                     必須只輸出一個合法 JSON，包含：
                     1. "thought_process": 運算總結（限 50 字內）。
                     2. "scores": {{"E-I":整數, "S-N":整數, "T-F":整數, "J-P":整數}}
                     3. "type": 4 碼 MBTI。
-                    4. "pet": 專屬寵物 (格式：形容詞 + 動物 + Emoji)。
-                    5. "report": 給使用者的解析報告字串。
+                    4. "pet": 專屬寵物 (形容詞+動物+Emoji)。
+                    5. "report": 給使用者的完整解析報告。【絕對不可是物件或陣列】，必須是「單一字串 (String)」，在字串內使用 \\n 來換行排版。
                     """
                     raw_res = master.call_ai(analysis_p, str(st.session_state.history), use_json=True)
                     
@@ -244,8 +245,19 @@ with tab1:
                         mbti_type = data.get("type", "未定義")
                         default_scores = data.get("scores", {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50})
                         pet_name = data.get("pet", "萌萌小精靈 🧚")
-                        # 🔥 強制將 report 轉成字串，防禦 AttributeError 崩潰
-                        report = str(data.get("report", "報告生成失敗。"))
+                        
+                        # 🔥 V20.5 智慧解包：如果 AI 還是給了字典/陣列，我們手動把它們變成漂亮字串
+                        raw_report = data.get("report", "報告生成失敗。")
+                        if isinstance(raw_report, dict):
+                            report = ""
+                            for k, v in raw_report.items():
+                                report += f"【{k}】\n{v}\n\n"
+                            report = report.strip()
+                        elif isinstance(raw_report, list):
+                            report = "\n\n".join([str(item) for item in raw_report])
+                        else:
+                            report = str(raw_report)
+                            
                         print(f"\n=== [後台監控] {st.session_state.nickname} 運算日誌 ===\n{data.get('thought_process', '無日誌')}\n")
                     except Exception as e:
                         mbti_type, pet_name, default_scores = "未定義", "萌萌小精靈 🧚", {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}
@@ -281,13 +293,11 @@ with tab1:
             
             col_l, col_r = st.columns([1.2, 1])
             with col_l:
-                # 🔥 渲染畫面時也確保它是字串
-                st.markdown(str(st.session_state.final_report))
+                st.markdown(st.session_state.final_report)
                 st.markdown("<br><hr>", unsafe_allow_html=True)
                 
-                # 🔥 這裡使用 str().replace() 保證絕對不會觸發 AttributeError
-                export_txt = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n類型：{st.session_state.final_mbti_type} ({current_title} - {current_desc})\n專屬寵物：{st.session_state.final_pet}\n\n{str(st.session_state.final_report).replace('#', '')}"
-                export_md = f"# TAICA 專屬人格解析 - {st.session_state.nickname}\n\n**專屬類型**：{st.session_state.final_mbti_type} ({current_title})\n> 💡 *{current_desc}*\n\n**專屬寵物**：{st.session_state.final_pet}\n\n{str(st.session_state.final_report)}"
+                export_txt = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n類型：{st.session_state.final_mbti_type} ({current_title} - {current_desc})\n專屬寵物：{st.session_state.final_pet}\n\n{st.session_state.final_report.replace('#', '')}"
+                export_md = f"# TAICA 專屬人格解析 - {st.session_state.nickname}\n\n**專屬類型**：{st.session_state.final_mbti_type} ({current_title})\n> 💡 *{current_desc}*\n\n**專屬寵物**：{st.session_state.final_pet}\n\n{st.session_state.final_report}"
                 
                 dl_c1, dl_c2 = st.columns(2)
                 with dl_c1: st.markdown(create_download_link(export_txt, f"TAICA_{st.session_state.nickname}.txt", "下載純文字版", "📝"), unsafe_allow_html=True)
