@@ -8,7 +8,7 @@ import pandas as pd
 import time
 
 # --- 1. 頁面配置與視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V18.2 🌸 (Ultimate Chat Edition)", page_icon="👑", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V18.3 🌸 (Stable Edition)", page_icon="👑", layout="wide")
 
 st.markdown("""
     <style>
@@ -20,22 +20,17 @@ st.markdown("""
         text-align: center; font-size: 3rem; font-weight: 900; margin-bottom: 5px; 
     }
     .subtitle { text-align: center; color: #d87093; font-size: 1.1rem; margin-bottom: 30px; font-weight: 700; }
-    
-    /* 登入卡片與報告卡片 */
     .glass-card { 
         background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
         border: 1px solid rgba(255, 255, 255, 0.8); padding: 35px; border-radius: 25px; margin: 20px 0; 
         box-shadow: 0 8px 32px rgba(255, 126, 179, 0.15); 
     }
-    
-    /* 快捷按鈕美化 */
     .stButton>button { 
         background: #FFFFFF; color: #FF7EB3; font-weight: 700; border-radius: 20px; 
         border: 2px solid #FFD1DC; height: auto; padding: 10px; box-shadow: 0 4px 10px rgba(255, 154, 158, 0.1); 
         transition: 0.3s; width: 100%; white-space: normal;
     }
     .stButton>button:hover { background: #FF7EB3; color: #FFFFFF; transform: translateY(-2px); border-color: #FF7EB3; }
-    
     .pet-title { font-size: 2.2rem; color: #FF7EB3; text-align: center; font-weight: 900; margin-bottom: 25px; }
     </style>
     """, unsafe_allow_html=True)
@@ -91,15 +86,15 @@ class TAICAMasterCloud:
 
     def call_ai(self, system_prompt, user_prompt):
         try:
+            # 🔥 防線一：加大 max_tokens 至 2048，防止 AI 講話講一半斷掉
             chat_completion = self.client.chat.completions.create(
                 messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-                model=self.model, temperature=0.4, 
+                model=self.model, temperature=0.4, max_tokens=2048 
             )
             return chat_completion.choices[0].message.content.strip()
         except Exception as e:
             return f"API 連線失敗：{e}"
 
-    # 🔥 終極安全版雷達圖：修正 angularaxis 屬性為 tickfont，保證不會跳出 ValueError
     def draw_radar(self, scores, mbti_type):
         categories = ['E-I(外向/內向)', 'S-N(實感/直覺)', 'T-F(思考/情感)', 'J-P(判斷/感知)']
         def safe_val(v):
@@ -115,7 +110,6 @@ class TAICAMasterCloud:
         fig.update_layout(
             polar=dict(
                 radialaxis=dict(visible=True, range=[0, 100], gridcolor="rgba(255, 154, 158, 0.3)"),
-                # 使用 tickfont 取代錯誤的 font 與 color，完美相容所有 Plotly 版本
                 angularaxis=dict(gridcolor="rgba(255, 154, 158, 0.3)", tickfont=dict(size=13, color="#5D4037"))
             ),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=40, r=40, t=40, b=40)
@@ -212,17 +206,19 @@ if st.session_state.get('v18_init') and st.session_state.step > 16:
     if not st.session_state.final_report:
         with st.spinner("✨ 測驗完成！大師正在進行 Fuzzy 模糊邏輯運算，並為你召喚專屬守護神獸..."):
             
+            # 🔥 防線二：嚴格限制思考過程長度，禁止逐題分析
             analysis_p = f"""
             受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學(Fuzzy Logic)』與『社群遊戲化』的權威 AI。
             請分析受試者的 16 題回答。對每個回答進行「模糊程度」評分 (0~100)。
             - 0~49 代表偏向 E/S/T/J；50~100 代表偏向 I/N/F/P。
             
-            【⚠️ 絕對禁止令】
-            最終報告中，嚴禁出現任何「思考鏈」、「步驟」、「輸出 JSON」等系統指令字眼。
+            【⚠️ 絕對禁止令與字數限制】
+            1. 為了避免字數超過系統上限，<thought_process> 內的運算過程請【極度精簡，限 100 字內】，直接給出最終 4 個維度的分數總結即可，【絕對不可】逐題詳細分析！
+            2. 最終報告中嚴禁出現「思考鏈」、「步驟」、「輸出 JSON」等系統指令字眼。
             
             【輸出格式嚴格規範】
             <thought_process>
-            (在此進行模糊運算，不要讓使用者看到)
+            (在此極簡短寫下最終分數總結)
             </thought_process>
 
             ```json
@@ -242,18 +238,27 @@ if st.session_state.get('v18_init') and st.session_state.step > 16:
             try:
                 json_match = re.search(r"```json\s*(\{.*?\})\s*```", raw_res, re.DOTALL | re.IGNORECASE)
                 if not json_match: json_match = re.search(r'\{[^{}]*"scores".*?\}', raw_res, re.DOTALL)
+                
                 if json_match:
                     data = json.loads(json_match.group(1) if "```" in json_match.group(0) else json_match.group())
                     mbti_type = data.get("type", mbti_type)
                     default_scores = data.get("scores", default_scores)
                     pet_name = data.get("pet", pet_name)
+                
+                # 🔥 防線三：如果真的連 JSON 都解析失敗，啟動備用正則表達式強制捕捉 MBTI
+                if mbti_type == "未定義":
+                    fallback_match = re.search(r'\b([EI][SN][TF][JP])\b', raw_res, re.IGNORECASE)
+                    if fallback_match:
+                        mbti_type = fallback_match.group(1).upper()
+                        pet_name = "隱藏版神秘神獸 🦄" # 給予安慰獎神獸
 
-                thought_match = re.search(r'<thought_process>(.*?)</thought_process>', raw_res, re.DOTALL | re.IGNORECASE)
+                # 後台日誌與前台清洗 (相容不完整的標籤)
+                thought_match = re.search(r'<thought_process>.*?(</thought_process>|$)', raw_res, re.DOTALL | re.IGNORECASE)
                 if thought_match:
-                    print(f"\n=== [後台監控] {st.session_state.nickname} 運算日誌 ===\n{thought_match.group(1).strip()}\n====================\n")
+                    print(f"\n=== [後台監控] {st.session_state.nickname} 運算日誌 ===\n{thought_match.group(0).replace('<thought_process>', '').replace('</thought_process>', '').strip()}\n====================\n")
                 
                 if "### 🌸 TAICA" in raw_res: report = "### 🌸 TAICA" + raw_res.split("### 🌸 TAICA")[1]
-                report = re.sub(r'<thought_process>.*?</thought_process>', '', report, flags=re.DOTALL | re.IGNORECASE).strip()
+                report = re.sub(r'<thought_process>.*?(</thought_process>|$)', '', report, flags=re.DOTALL | re.IGNORECASE).strip()
                 report = re.sub(r'```json.*?```', '', report, flags=re.DOTALL | re.IGNORECASE).strip()
                 report = re.sub(r'(🧠\s*思考鏈.*?|步驟\s*\d+\s*[：:].*)', '', report, flags=re.IGNORECASE).strip()
                 
