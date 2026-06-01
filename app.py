@@ -8,7 +8,7 @@ import time
 import base64
 
 # --- 1. 頁面配置與視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V20.1 🌸 (Smart Scoring Edition)", page_icon="🐾", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V20.2 🌸 (Smart Dictionary Edition)", page_icon="🐾", layout="wide")
 
 st.markdown("""
     <style>
@@ -48,11 +48,24 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# 🔥 V20.2 升級：雙層官方稱號字典，加入精簡解釋
 MBTI_TITLES = {
-    "INTJ": "建築師", "INTP": "邏輯學家", "ENTJ": "指揮官", "ENTP": "辯論家",
-    "INFJ": "提倡者", "INFP": "調停者", "ENFJ": "主人公", "ENFP": "競選者",
-    "ISTJ": "物流師", "ISFJ": "守衛者", "ESTJ": "總經理", "ESFJ": "執政官",
-    "ISTP": "鑑賞家", "ISFP": "探險家", "ESTP": "企業家", "ESFP": "表演者"
+    "INTJ": {"title": "建築師", "desc": "富有想像力與戰略性思維，一切皆有計劃"},
+    "INTP": {"title": "邏輯學家", "desc": "具有創造力，熱衷於追求知識與創新發明"},
+    "ENTJ": {"title": "指揮官", "desc": "大膽且意志強大的領導者，總能找到解決方法"},
+    "ENTP": {"title": "辯論家", "desc": "聰明好奇的思想者，熱愛智力挑戰與激辯"},
+    "INFJ": {"title": "提倡者", "desc": "安靜神秘，卻是非常鼓舞人心且不知疲倦的理想主義者"},
+    "INFP": {"title": "調停者", "desc": "詩意、善良且利他，總是熱衷於幫助正義的一方"},
+    "ENFJ": {"title": "主人公", "desc": "充滿魅力與鼓舞人心的領導者，能夠讓聽眾為之著迷"},
+    "ENFP": {"title": "競選者", "desc": "熱情、有創意且熱愛社交，總是能找到微笑的理由"},
+    "ISTJ": {"title": "物流師", "desc": "注重實用與事實，可靠性不容懷疑"},
+    "ISFJ": {"title": "守衛者", "desc": "非常專注且溫暖的守護者，時刻準備保護他們愛的人"},
+    "ESTJ": {"title": "總經理", "desc": "出色的管理者，在管理事物或人員方面無與倫比"},
+    "ESFJ": {"title": "執政官", "desc": "極度關心他人、善於社交，總是熱心提供幫助"},
+    "ISTP": {"title": "鑑賞家", "desc": "大膽實用的實驗者，精通所有工具與技巧"},
+    "ISFP": {"title": "探險家", "desc": "靈活迷人的藝術家，時刻準備探索並體驗新事物"},
+    "ESTP": {"title": "企業家", "desc": "聰明、精力充沛，真心享受處於邊緣的刺激生活"},
+    "ESFP": {"title": "表演者", "desc": "隨性、充滿活力且熱情，在他們身邊永遠不會無聊"}
 }
 
 def create_download_link(data, filename, text, emoji):
@@ -97,7 +110,6 @@ class TAICAMasterCloud:
             ]
         }
 
-    # 🔥 V20.1 修復：動態 JSON 模式切換，防 400 報錯
     def call_ai(self, system_prompt, user_prompt, use_json=True):
         try:
             kwargs = {
@@ -108,7 +120,6 @@ class TAICAMasterCloud:
             }
             if use_json:
                 kwargs["response_format"] = {"type": "json_object"}
-                # 防呆確保提示詞有 json，避免 Groq 直接報錯 400
                 if "json" not in system_prompt.lower() and "json" not in user_prompt.lower():
                     kwargs["messages"][0]["content"] += "\nOutput in JSON format."
             
@@ -207,7 +218,6 @@ with tab1:
             if not st.session_state.final_report:
                 with st.spinner("🐾 測驗完成！大師正在進行模糊運算，為你召喚專屬寵物..."):
                     
-                    # 🔥 V20.1 修復：明確指示 AI「越外向分數要越低」，杜絕反向計分災難！
                     analysis_p = f"""
                     受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學』的權威 AI。
                     請分析 16 題回答。分數範圍必須在 0~100 之間。
@@ -255,7 +265,11 @@ with tab1:
             st.markdown('<div class="glass-card">', unsafe_allow_html=True)
             st.markdown(f'<div class="pet-title">✨ 召喚成功 ✨<br>你的專屬寵物是：{st.session_state.final_pet}</div>', unsafe_allow_html=True)
             
-            current_title = MBTI_TITLES.get(st.session_state.final_mbti_type, "神祕類型")
+            # 取得稱號與解釋
+            mbti_info = MBTI_TITLES.get(st.session_state.final_mbti_type, {"title": "神祕類型", "desc": "尚未被世人完全了解的獨特存在"})
+            current_title = mbti_info["title"]
+            current_desc = mbti_info["desc"]
+            
             pet_emoji = st.session_state.final_pet.split(" ")[-1] if " " in st.session_state.final_pet else "🐾"
             ig_html = f"""
             <div class="ig-story-card">
@@ -272,15 +286,24 @@ with tab1:
             with col_l:
                 st.markdown(st.session_state.final_report)
                 st.markdown("<br><hr>", unsafe_allow_html=True)
-                export_txt = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n類型：{st.session_state.final_mbti_type} ({current_title})\n專屬寵物：{st.session_state.final_pet}\n\n{st.session_state.final_report.replace('#', '')}"
+                
+                # 下載內容同步更新雙層字典格式
+                export_txt = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n類型：{st.session_state.final_mbti_type} ({current_title} - {current_desc})\n專屬寵物：{st.session_state.final_pet}\n\n{st.session_state.final_report.replace('#', '')}"
+                export_md = f"# TAICA 專屬人格解析 - {st.session_state.nickname}\n\n**專屬類型**：{st.session_state.final_mbti_type} ({current_title})\n> 💡 *{current_desc}*\n\n**專屬寵物**：{st.session_state.final_pet}\n\n{st.session_state.final_report}"
+                
                 dl_c1, dl_c2 = st.columns(2)
                 with dl_c1: st.markdown(create_download_link(export_txt, f"TAICA_{st.session_state.nickname}.txt", "下載純文字版", "📝"), unsafe_allow_html=True)
-                with dl_c2: 
-                    if st.button("🔄 再玩一次"): 
-                        for k in st.session_state.keys(): del st.session_state[k]
-                        st.rerun()
+                with dl_c2: st.markdown(create_download_link(export_md, f"TAICA_{st.session_state.nickname}.md", "下載排版列印版", "🖨️"), unsafe_allow_html=True)
+                if st.button("🔄 再測一次", use_container_width=True): 
+                    for k in st.session_state.keys(): del st.session_state[k]
+                    st.rerun()
             with col_r:
                 st.plotly_chart(master.draw_radar(st.session_state.final_scores, st.session_state.final_mbti_type), use_container_width=True)
+                
+                # UI 上顯示稱號與精簡解釋
+                st.markdown(f"<h3 style='text-align: center; color: #5D4037;'>🎉 專屬類型：<br><span style='color:#FF7EB3; font-size: 2.5rem; font-weight: 900;'>{st.session_state.final_mbti_type}</span><br>({current_title})</h3>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align: center; color: #888; font-size: 1rem; margin-top: -10px;'>💡 <i>{current_desc}</i></p>", unsafe_allow_html=True)
+                
                 st.markdown(ig_html, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -290,13 +313,13 @@ with tab2:
     st.markdown("<p style='text-align:center;'>測完你的 MBTI 了嗎？輸入好友或伴侶的 MBTI，看看你們的靈魂有多契合！</p>", unsafe_allow_html=True)
     
     bond_c1, bond_c2 = st.columns(2)
-    with bond_c1: my_mbti = st.selectbox("你的 MBTI", list(MBTI_TITLES.keys()), index=0)
-    with bond_c2: friend_mbti = st.selectbox("朋友的 MBTI", list(MBTI_TITLES.keys()), index=15)
+    mbti_keys = list(MBTI_TITLES.keys())
+    with bond_c1: my_mbti = st.selectbox("你的 MBTI", mbti_keys, index=0)
+    with bond_c2: friend_mbti = st.selectbox("朋友的 MBTI", mbti_keys, index=15)
     
     if st.button("🔮 計算羈絆指數", use_container_width=True):
         with st.spinner("AI 正在解析兩隻寵物的相處模式..."):
             bond_prompt = f"請以輕鬆可愛的語氣，分析 {my_mbti} 與 {friend_mbti} 的相處契合度。輸出包含：1. 契合度分數(1~100) 2. 簡短相處優勢 3. 潛在小摩擦。限 150 字。"
-            # 🔥 V20.1 修復：將 use_json 設為 False，防範 Groq API 報 400 錯誤
             bond_result = master.call_ai("你是 MBTI 戀愛與人際關係大師，回答簡短精確。", bond_prompt, use_json=False)
             st.success("計算完成！")
             st.info(bond_result)
