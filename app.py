@@ -8,7 +8,7 @@ import pandas as pd
 import time
 
 # --- 1. 頁面配置與視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V18.0 🌸 (Chat Edition)", page_icon="👑", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V18.1 🌸 (Ultimate Chat Edition)", page_icon="👑", layout="wide")
 
 st.markdown("""
     <style>
@@ -52,7 +52,7 @@ def get_global_leaderboard():
     return [] 
 global_board = get_global_leaderboard()
 
-# --- 3. 核心 AI 引擎 (新增快捷選項庫) ---
+# --- 3. 核心 AI 引擎 ---
 class TAICAMasterCloud:
     def __init__(self):
         try:
@@ -62,7 +62,7 @@ class TAICAMasterCloud:
             
         self.model = "llama-3.1-8b-instant" 
         
-        # 🔥 題目庫全面升級：加入預設快捷選項 (Opts)
+        # 🔥 題目庫：附帶預設快捷選項
         self.q_bank = {
             'E-I': [
                 {"q": "放假喜歡一個人宅著，還是跟朋友出門去玩？", "opts": ["🏠 絕對是宅在家", "🎉 找朋友出門嗨", "🤔 看心情跟看局"]},
@@ -100,6 +100,7 @@ class TAICAMasterCloud:
         except Exception as e:
             return f"API 連線失敗：{e}"
 
+    # 🔥 修復 1：移除 weight="bold" 以相容不同版本的 Plotly
     def draw_radar(self, scores, mbti_type):
         categories = ['E-I(外向/內向)', 'S-N(實感/直覺)', 'T-F(思考/情感)', 'J-P(判斷/感知)']
         def safe_val(v):
@@ -113,8 +114,10 @@ class TAICAMasterCloud:
             line=dict(color='#FF7EB3', width=3), marker=dict(color='#FF7EB3', size=10), name=f"類型: {mbti_type}"
         ))
         fig.update_layout(
-            polar=dict(radialaxis=dict(visible=True, range=[0, 100], gridcolor="rgba(255, 154, 158, 0.3)"),
-                       angularaxis=dict(gridcolor="rgba(255, 154, 158, 0.3)", color="#5D4037", font=dict(size=13, weight="bold"))),
+            polar=dict(
+                radialaxis=dict(visible=True, range=[0, 100], gridcolor="rgba(255, 154, 158, 0.3)"),
+                angularaxis=dict(gridcolor="rgba(255, 154, 158, 0.3)", color="#5D4037", font=dict(size=13))
+            ),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#5D4037"), margin=dict(l=40, r=40, t=40, b=40)
         )
         return fig
@@ -171,7 +174,6 @@ with main_c2:
         with c1: nick = st.text_input("怎麼稱呼你呢？", placeholder="輸入你的專屬暱稱")
         with c2: gend = st.radio("你的角色設定是？", ["女孩 🌸", "男孩 🍃"], horizontal=True)
         st.markdown("<br>", unsafe_allow_html=True)
-        # 特別處理開始按鈕樣式
         st.markdown("""<style>div[data-testid="stButton"] button {background: linear-gradient(90deg, #FF9A9E 0%, #FECFEF 100%); color: #5D4037;}</style>""", unsafe_allow_html=True)
         if st.button("✨ 點擊開始探索 ✨"):
             if nick:
@@ -182,20 +184,17 @@ with main_c2:
         st.markdown('</div>', unsafe_allow_html=True)
 
     elif st.session_state.step <= 16:
-        
-        # 1. 渲染過去的對話紀錄
+        # 渲染過去的對話紀錄
         for chat in st.session_state.history:
             with st.chat_message("ai", avatar="🧚"):
                 st.write(chat['q'])
             with st.chat_message("human", avatar="🌸" if st.session_state.gender=="女孩 🌸" else "🍃"):
                 st.write(chat['a'])
                 
-        # 2. 渲染當前題目與快捷選項
+        # 渲染當前題目與快捷選項
         curr_q = st.session_state.questions[st.session_state.step - 1]
         with st.chat_message("ai", avatar="🧚"):
             st.markdown(f"**第 {st.session_state.step}/16 題：**<br><span style='font-size: 1.2rem; color:#5D4037;'>{curr_q['q']}</span>", unsafe_allow_html=True)
-            
-            # 建立快捷選項按鈕
             st.write("") 
             opt_cols = st.columns(3)
             for i, opt in enumerate(curr_q['opts']):
@@ -204,7 +203,7 @@ with main_c2:
                     st.session_state.step += 1
                     st.rerun()
                     
-        # 3. 允許使用者依然可以打字輸入 (Chat Input 固定在畫面底部)
+        # 自訂輸入框
         user_input = st.chat_input("選項不夠準？在這裡輸入你自己獨特的想法...")
         if user_input:
             st.session_state.history.append({"q": curr_q['q'], "a": user_input})
@@ -216,23 +215,26 @@ if st.session_state.get('v18_init') and st.session_state.step > 16:
     if not st.session_state.final_report:
         with st.spinner("✨ 測驗完成！大師正在進行 Fuzzy 模糊邏輯運算，並為你召喚專屬守護神獸..."):
             
+            # 🔥 修復 2：加強版提示詞，絕對禁止 AI 幻覺與外洩指令
             analysis_p = f"""
             受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學(Fuzzy Logic)』與『社群遊戲化』的權威 AI。
-            請分析受試者的 16 題回答(可能是快捷選項或自訂文字)。對每個回答進行「模糊程度」評分 (0~100)。
+            請分析受試者的 16 題回答。對每個回答進行「模糊程度」評分 (0~100)。
             - 0~49 代表偏向 E/S/T/J；50~100 代表偏向 I/N/F/P。
             
-            【🧠 思考鏈 (CoT)】
-            步驟 1：開啟 <thought_process> 標籤，進行模糊邏輯運算。
-            步驟 2：關閉 </thought_process> 標籤。
-            步驟 3：嚴格輸出下方的 ```json 區塊 (必須包含 pet 欄位，pet 為形容詞+動物+Emoji)。
-            步驟 4：撰寫溫柔的診斷報告。
+            【⚠️ 絕對禁止令】
+            最終報告中，嚴禁出現任何「思考鏈」、「步驟」、「輸出 JSON」等系統指令字眼。
+            
+            【輸出格式嚴格規範】
+            <thought_process>
+            (在此進行模糊運算，不要讓使用者看到)
+            </thought_process>
 
             ```json
             {{"scores": {{"E-I": 25, "S-N": 35, "T-F": 80, "J-P": 15}}, "type": "ESFJ", "pet": "熱情溫暖的黃金獵犬 🦮"}}
             ```
             
             ### 🌸 TAICA 專屬人格解析 - {st.session_state.nickname} 🌸
-            【🐾 你的專屬印象寵物】\n你是**(填入寵物名稱)**！(解釋原因)
+            【🐾 你的專屬印象寵物】\n你是**(填入寵物名稱)**！(溫暖解釋原因)
             【✨ 專屬你的閃光點】\n* (優點)
             【💡 小煩惱與成長建議】\n* (建議)
             """
@@ -250,7 +252,7 @@ if st.session_state.get('v18_init') and st.session_state.step > 16:
                     default_scores = data.get("scores", default_scores)
                     pet_name = data.get("pet", pet_name)
 
-                # 後台日誌與前台清理
+                # 後台日誌與前台清洗 (加入最強暴力濾除)
                 thought_match = re.search(r'<thought_process>(.*?)</thought_process>', raw_res, re.DOTALL | re.IGNORECASE)
                 if thought_match:
                     print(f"\n=== [後台監控] {st.session_state.nickname} 運算日誌 ===\n{thought_match.group(1).strip()}\n====================\n")
@@ -258,6 +260,8 @@ if st.session_state.get('v18_init') and st.session_state.step > 16:
                 if "### 🌸 TAICA" in raw_res: report = "### 🌸 TAICA" + raw_res.split("### 🌸 TAICA")[1]
                 report = re.sub(r'<thought_process>.*?</thought_process>', '', report, flags=re.DOTALL | re.IGNORECASE).strip()
                 report = re.sub(r'```json.*?```', '', report, flags=re.DOTALL | re.IGNORECASE).strip()
+                report = re.sub(r'(🧠\s*思考鏈.*?|步驟\s*\d+\s*[：:].*)', '', report, flags=re.IGNORECASE).strip()
+                
             except Exception as e:
                 report = f"系統解析中發生小插曲，請稍後重試！(錯誤碼: {e})"
             
