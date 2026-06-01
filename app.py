@@ -1,6 +1,5 @@
 import streamlit as st
 import json
-import re
 import plotly.graph_objects as go
 import random
 from groq import Groq
@@ -8,7 +7,7 @@ import pandas as pd
 import time
 
 # --- 1. 頁面配置與視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V18.3 🌸 (Stable Edition)", page_icon="👑", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V19.0 🌸 (Ironclad JSON Edition)", page_icon="👑", layout="wide")
 
 st.markdown("""
     <style>
@@ -86,14 +85,15 @@ class TAICAMasterCloud:
 
     def call_ai(self, system_prompt, user_prompt):
         try:
-            # 🔥 防線一：加大 max_tokens 至 2048，防止 AI 講話講一半斷掉
+            # 🔥 終極殺手鐧：啟動 response_format={"type": "json_object"} 強制 API 只回傳 JSON
             chat_completion = self.client.chat.completions.create(
                 messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-                model=self.model, temperature=0.4, max_tokens=2048 
+                model=self.model, temperature=0.4, max_tokens=2048,
+                response_format={"type": "json_object"} 
             )
             return chat_completion.choices[0].message.content.strip()
         except Exception as e:
-            return f"API 連線失敗：{e}"
+            return f'{{"report": "API 連線失敗：{e}", "type": "未知", "pet": "斷線的機器人 🤖", "scores": {{"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}}}}'
 
     def draw_radar(self, scores, mbti_type):
         categories = ['E-I(外向/內向)', 'S-N(實感/直覺)', 'T-F(思考/情感)', 'J-P(判斷/感知)']
@@ -120,7 +120,7 @@ class TAICAMasterCloud:
 st.markdown('<h1 class="main-title">✨ TAICA 靈魂神獸測驗 ✨</h1>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">AI 驅動・深度探索你的隱藏人格</div>', unsafe_allow_html=True)
 
-if 'v18_init' not in st.session_state:
+if 'v19_init' not in st.session_state:
     master_temp = TAICAMasterCloud()
     all_qs = []
     for dim, qs in master_temp.q_bank.items():
@@ -128,7 +128,7 @@ if 'v18_init' not in st.session_state:
     random.shuffle(all_qs)
     
     st.session_state.update({
-        'v18_init': False, 'step': 1, 'history': [], 'nickname': '', 'gender': '',
+        'v19_init': False, 'step': 1, 'history': [], 'nickname': '', 'gender': '',
         'questions': all_qs, 'saved_to_board': False,
         'final_report': '', 'final_mbti_type': '未定義', 
         'final_scores': {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}, 'final_pet': '神祕精靈'
@@ -139,7 +139,7 @@ master = TAICAMasterCloud()
 # --- 側邊欄儀表板 ---
 with st.sidebar:
     st.markdown("### 🎀 專屬探索檔案")
-    if st.session_state.v18_init:
+    if st.session_state.v19_init:
         st.write(f"🧸 探險家: **{st.session_state.nickname}**")
         st.progress(min(st.session_state.step / 16, 1.0))
         st.write(f"🔮 探索進度: {min(st.session_state.step, 16)} / 16 題")
@@ -161,7 +161,7 @@ with st.sidebar:
 main_c1, main_c2, main_c3 = st.columns([1, 4, 1])
 
 with main_c2:
-    if not st.session_state.v18_init:
+    if not st.session_state.v19_init:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.subheader("👋 哈囉！準備好遇見你的靈魂神獸了嗎？")
         c1, c2 = st.columns(2)
@@ -171,7 +171,7 @@ with main_c2:
         st.markdown("""<style>div[data-testid="stButton"] button {background: linear-gradient(90deg, #FF9A9E 0%, #FECFEF 100%); color: #5D4037;}</style>""", unsafe_allow_html=True)
         if st.button("✨ 點擊開始探索 ✨"):
             if nick:
-                st.session_state.nickname, st.session_state.gender, st.session_state.v18_init = nick, gend, True
+                st.session_state.nickname, st.session_state.gender, st.session_state.v19_init = nick, gend, True
                 st.toast(f"歡迎來到 TAICA，{nick}！旅程開始囉 🚀")
                 time.sleep(0.5)
                 st.rerun()
@@ -202,68 +202,51 @@ with main_c2:
             st.rerun()
 
 # --- 6. 滿版顯示分析報告 ---
-if st.session_state.get('v18_init') and st.session_state.step > 16:
+if st.session_state.get('v19_init') and st.session_state.step > 16:
     if not st.session_state.final_report:
         with st.spinner("✨ 測驗完成！大師正在進行 Fuzzy 模糊邏輯運算，並為你召喚專屬守護神獸..."):
             
-            # 🔥 防線二：嚴格限制思考過程長度，禁止逐題分析
+            # 🔥 極致穩定防呆提示詞：要求 AI 把所有資訊都塞進 JSON 物件中
             analysis_p = f"""
             受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學(Fuzzy Logic)』與『社群遊戲化』的權威 AI。
             請分析受試者的 16 題回答。對每個回答進行「模糊程度」評分 (0~100)。
             - 0~49 代表偏向 E/S/T/J；50~100 代表偏向 I/N/F/P。
             
-            【⚠️ 絕對禁止令與字數限制】
-            1. 為了避免字數超過系統上限，<thought_process> 內的運算過程請【極度精簡，限 100 字內】，直接給出最終 4 個維度的分數總結即可，【絕對不可】逐題詳細分析！
-            2. 最終報告中嚴禁出現「思考鏈」、「步驟」、「輸出 JSON」等系統指令字眼。
+            【⚠️ 系統強制輸出規範 (JSON Mode)】
+            你必須「只」輸出一個合法的 JSON 物件，絕對不要輸出任何 markdown 標籤(如 ```json) 或其他開頭結尾語。
+            這份 JSON 必須包含以下 5 個 key：
+            1. "thought_process": 你的模糊運算總結（限 50 字內，不要逐題分析）。
+            2. "scores": 包含 "E-I", "S-N", "T-F", "J-P" 四個鍵值對的整數分數。
+            3. "type": 計算出的 4 碼 MBTI (例如 "INTJ")。
+            4. "pet": 專屬印象寵物 (格式：形容詞 + 動物 + Emoji)。
+            5. "report": 給使用者的完整解析報告。排版請使用 markdown，包含「🐾 你的專屬印象寵物」、「✨ 專屬你的閃光點」、「💡 小煩惱與成長建議」。
             
-            【輸出格式嚴格規範】
-            <thought_process>
-            (在此極簡短寫下最終分數總結)
-            </thought_process>
-
-            ```json
-            {{"scores": {{"E-I": 25, "S-N": 35, "T-F": 80, "J-P": 15}}, "type": "ESFJ", "pet": "熱情溫暖的黃金獵犬 🦮"}}
-            ```
-            
-            ### 🌸 TAICA 專屬人格解析 - {st.session_state.nickname} 🌸
-            【🐾 你的專屬印象寵物】\n你是**(填入寵物名稱)**！(溫暖解釋原因)
-            【✨ 專屬你的閃光點】\n* (優點)
-            【💡 小煩惱與成長建議】\n* (建議)
+            範例結構：
+            {{
+                "thought_process": "偏向內向與直覺...",
+                "scores": {{"E-I": 80, "S-N": 60, "T-F": 30, "J-P": 20}},
+                "type": "INTJ",
+                "pet": "冷靜聰明的貓頭鷹 🦉",
+                "report": "### 🌸 TAICA 專屬人格解析 - {st.session_state.nickname} 🌸\\n\\n【🐾 你的專屬印象寵物】...\\n\\n【✨ 專屬你的閃光點】...\\n\\n【💡 小煩惱與成長建議】..."
+            }}
             """
             raw_res = master.call_ai(analysis_p, str(st.session_state.history))
             
-            mbti_type, pet_name = "未定義", "神祕可愛的小精靈 🧚"
-            report, default_scores = raw_res, {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}
-            
+            # 🔥 原生 JSON 解析，告別麻煩的正則表達式
             try:
-                json_match = re.search(r"```json\s*(\{.*?\})\s*```", raw_res, re.DOTALL | re.IGNORECASE)
-                if not json_match: json_match = re.search(r'\{[^{}]*"scores".*?\}', raw_res, re.DOTALL)
+                data = json.loads(raw_res)
+                mbti_type = data.get("type", "未定義")
+                default_scores = data.get("scores", {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50})
+                pet_name = data.get("pet", "神祕可愛的小精靈 🧚")
+                report = data.get("report", "報告生成失敗，請再試一次。")
                 
-                if json_match:
-                    data = json.loads(json_match.group(1) if "```" in json_match.group(0) else json_match.group())
-                    mbti_type = data.get("type", mbti_type)
-                    default_scores = data.get("scores", default_scores)
-                    pet_name = data.get("pet", pet_name)
-                
-                # 🔥 防線三：如果真的連 JSON 都解析失敗，啟動備用正則表達式強制捕捉 MBTI
-                if mbti_type == "未定義":
-                    fallback_match = re.search(r'\b([EI][SN][TF][JP])\b', raw_res, re.IGNORECASE)
-                    if fallback_match:
-                        mbti_type = fallback_match.group(1).upper()
-                        pet_name = "隱藏版神秘神獸 🦄" # 給予安慰獎神獸
-
-                # 後台日誌與前台清洗 (相容不完整的標籤)
-                thought_match = re.search(r'<thought_process>.*?(</thought_process>|$)', raw_res, re.DOTALL | re.IGNORECASE)
-                if thought_match:
-                    print(f"\n=== [後台監控] {st.session_state.nickname} 運算日誌 ===\n{thought_match.group(0).replace('<thought_process>', '').replace('</thought_process>', '').strip()}\n====================\n")
-                
-                if "### 🌸 TAICA" in raw_res: report = "### 🌸 TAICA" + raw_res.split("### 🌸 TAICA")[1]
-                report = re.sub(r'<thought_process>.*?(</thought_process>|$)', '', report, flags=re.DOTALL | re.IGNORECASE).strip()
-                report = re.sub(r'```json.*?```', '', report, flags=re.DOTALL | re.IGNORECASE).strip()
-                report = re.sub(r'(🧠\s*思考鏈.*?|步驟\s*\d+\s*[：:].*)', '', report, flags=re.IGNORECASE).strip()
+                # 依然為你在終端機保留了完美的後台監控日誌
+                print(f"\n=== [後台監控] {st.session_state.nickname} 運算日誌 ===\n{data.get('thought_process', '無運算日誌')}\n====================\n")
                 
             except Exception as e:
-                report = f"系統解析中發生小插曲，請稍後重試！(錯誤碼: {e})"
+                mbti_type, pet_name = "未定義", "神祕可愛的小精靈 🧚"
+                default_scores = {"E-I": 50, "S-N": 50, "T-F": 50, "J-P": 50}
+                report = f"系統解析中發生小插曲，請稍後重試！(錯誤碼: {e})\n\n[系統回傳內容]: {raw_res}"
             
             st.session_state.update({
                 'final_report': report, 'final_mbti_type': mbti_type, 
