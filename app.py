@@ -8,7 +8,7 @@ import time
 import base64
 
 # --- 1. 頁面配置與視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V20.2 🌸 (Smart Dictionary Edition)", page_icon="🐾", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V20.3 🌸 (Diverse Pets Edition)", page_icon="🐾", layout="wide")
 
 st.markdown("""
     <style>
@@ -48,7 +48,6 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 🔥 V20.2 升級：雙層官方稱號字典，加入精簡解釋
 MBTI_TITLES = {
     "INTJ": {"title": "建築師", "desc": "富有想像力與戰略性思維，一切皆有計劃"},
     "INTP": {"title": "邏輯學家", "desc": "具有創造力，熱衷於追求知識與創新發明"},
@@ -77,7 +76,6 @@ def get_global_leaderboard():
     return [] 
 global_board = get_global_leaderboard()
 
-# --- 3. 核心 AI 引擎 ---
 class TAICAMasterCloud:
     def __init__(self):
         try: self.client = Groq(api_key=st.secrets["GROQ_API_KEY"])
@@ -115,7 +113,7 @@ class TAICAMasterCloud:
             kwargs = {
                 "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                 "model": self.model,
-                "temperature": 0.5,
+                "temperature": 0.6, # 稍微調高溫度，激發更多樣的動物創意
                 "max_tokens": 2048
             }
             if use_json:
@@ -170,7 +168,7 @@ if 'v20_init' not in st.session_state:
 
 master = TAICAMasterCloud()
 
-# --- 5. 三大核心分頁 (Tabs) ---
+# --- 5. 三大核心分頁 ---
 tab1, tab2, tab3 = st.tabs(["✨ 尋找專屬寵物", "💞 寵物羈絆合盤", "📊 數據中心 (開發者)"])
 
 with tab1:
@@ -218,19 +216,24 @@ with tab1:
             if not st.session_state.final_report:
                 with st.spinner("🐾 測驗完成！大師正在進行模糊運算，為你召喚專屬寵物..."):
                     
+                    # 🔥 V20.3 升級：極限多樣性強制指令與嚴格彩蛋鎖
                     analysis_p = f"""
                     受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學』的權威 AI。
                     請分析 16 題回答。分數範圍必須在 0~100 之間。
                     
                     【⚖️ 絕對計分防呆指南 (不要算反！)】
-                    AI 很容易把分數算反，請嚴格遵守以下對應：
-                    1. E-I (外向/內向)：越「外向/愛社交」，分數要越【低】(0~49)；越「內向/愛獨處」，分數要越【高】(50~100)。
-                    2. S-N (實感/直覺)：越「務實/看細節」，分數要越【低】(0~49)；越「憑感覺/看整體」，分數要越【高】(50~100)。
-                    3. T-F (思考/情感)：越「講邏輯/理智」，分數要越【低】(0~49)；越「顧感受/感性」，分數要越【高】(50~100)。
-                    4. J-P (判斷/感知)：越「愛計畫/按部就班」，分數要越【低】(0~49)；越「隨性/看心情」，分數要越【高】(50~100)。
+                    1. E-I (外向/內向)：越「外向/愛社交」，分數要越【低】；越「內向/愛獨處」，分數要越【高】。
+                    2. S-N (實感/直覺)：越「務實/看細節」，分數要越【低】；越「憑感覺/看整體」，分數要越【高】。
+                    3. T-F (思考/情感)：越「講邏輯/理智」，分數要越【低】；越「顧感受/感性」，分數要越【高】。
+                    4. J-P (判斷/感知)：越「愛計畫/按部就班」，分數要越【低】；越「隨性/看心情」，分數要越【高】。
                     
-                    【🎁 隱藏彩蛋機制 (極機密)】
-                    如果受試者展現出「極度隨和、情緒穩定、佛系」特質，請務必將專屬寵物設定為：『佛系大水豚 🦦』！
+                    【🐾 寵物多樣性強制指令 (極度重要！)】
+                    大自然有數以萬計的獨特生物（例如：雪鴞、蜜獾、六角恐龍、耳廓狐、黑豹、水母、樹懶、紅鶴、海獺等）。
+                    請根據受試者的真實特質，發揮你極致的想像力，挑選最符合的專屬動物！
+                    **絕對禁止每次都只給「貓、狗、企鵝或水豚」！** 必須確保寵物種類極度多元且充滿驚喜。
+                    
+                    【🎁 SSR級極稀有彩蛋：佛系大水豚 🦦】
+                    「只有」當受試者的 I(內向) 和 P(感知) 分數雙雙高達 85 分以上，且回答展現出「極度慵懶、與世無爭」時，才能觸發此彩蛋。否則請嚴格遵守多樣性指令，給予其他充滿特色的動物。
                     
                     【⚠️ 系統強制輸出規範 (JSON Mode)】
                     必須只輸出一個合法 JSON，包含：
@@ -265,7 +268,6 @@ with tab1:
             st.markdown('<div class="glass-card">', unsafe_allow_html=True)
             st.markdown(f'<div class="pet-title">✨ 召喚成功 ✨<br>你的專屬寵物是：{st.session_state.final_pet}</div>', unsafe_allow_html=True)
             
-            # 取得稱號與解釋
             mbti_info = MBTI_TITLES.get(st.session_state.final_mbti_type, {"title": "神祕類型", "desc": "尚未被世人完全了解的獨特存在"})
             current_title = mbti_info["title"]
             current_desc = mbti_info["desc"]
@@ -287,7 +289,6 @@ with tab1:
                 st.markdown(st.session_state.final_report)
                 st.markdown("<br><hr>", unsafe_allow_html=True)
                 
-                # 下載內容同步更新雙層字典格式
                 export_txt = f"【TAICA 專屬人格解析 - {st.session_state.nickname}】\n\n類型：{st.session_state.final_mbti_type} ({current_title} - {current_desc})\n專屬寵物：{st.session_state.final_pet}\n\n{st.session_state.final_report.replace('#', '')}"
                 export_md = f"# TAICA 專屬人格解析 - {st.session_state.nickname}\n\n**專屬類型**：{st.session_state.final_mbti_type} ({current_title})\n> 💡 *{current_desc}*\n\n**專屬寵物**：{st.session_state.final_pet}\n\n{st.session_state.final_report}"
                 
@@ -299,11 +300,8 @@ with tab1:
                     st.rerun()
             with col_r:
                 st.plotly_chart(master.draw_radar(st.session_state.final_scores, st.session_state.final_mbti_type), use_container_width=True)
-                
-                # UI 上顯示稱號與精簡解釋
                 st.markdown(f"<h3 style='text-align: center; color: #5D4037;'>🎉 專屬類型：<br><span style='color:#FF7EB3; font-size: 2.5rem; font-weight: 900;'>{st.session_state.final_mbti_type}</span><br>({current_title})</h3>", unsafe_allow_html=True)
                 st.markdown(f"<p style='text-align: center; color: #888; font-size: 1rem; margin-top: -10px;'>💡 <i>{current_desc}</i></p>", unsafe_allow_html=True)
-                
                 st.markdown(ig_html, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
