@@ -8,7 +8,7 @@ import pandas as pd
 import time
 
 # --- 1. 頁面配置與視覺美化 ---
-st.set_page_config(page_title="TAICA MBTI V18.1 🌸 (Ultimate Chat Edition)", page_icon="👑", layout="wide")
+st.set_page_config(page_title="TAICA MBTI V18.2 🌸 (Ultimate Chat Edition)", page_icon="👑", layout="wide")
 
 st.markdown("""
     <style>
@@ -62,7 +62,6 @@ class TAICAMasterCloud:
             
         self.model = "llama-3.1-8b-instant" 
         
-        # 🔥 題目庫：附帶預設快捷選項
         self.q_bank = {
             'E-I': [
                 {"q": "放假喜歡一個人宅著，還是跟朋友出門去玩？", "opts": ["🏠 絕對是宅在家", "🎉 找朋友出門嗨", "🤔 看心情跟看局"]},
@@ -100,7 +99,7 @@ class TAICAMasterCloud:
         except Exception as e:
             return f"API 連線失敗：{e}"
 
-    # 🔥 修復 1：移除 weight="bold" 以相容不同版本的 Plotly
+    # 🔥 終極安全版雷達圖：修正 angularaxis 屬性為 tickfont，保證不會跳出 ValueError
     def draw_radar(self, scores, mbti_type):
         categories = ['E-I(外向/內向)', 'S-N(實感/直覺)', 'T-F(思考/情感)', 'J-P(判斷/感知)']
         def safe_val(v):
@@ -116,13 +115,14 @@ class TAICAMasterCloud:
         fig.update_layout(
             polar=dict(
                 radialaxis=dict(visible=True, range=[0, 100], gridcolor="rgba(255, 154, 158, 0.3)"),
-                angularaxis=dict(gridcolor="rgba(255, 154, 158, 0.3)", color="#5D4037", font=dict(size=13))
+                # 使用 tickfont 取代錯誤的 font 與 color，完美相容所有 Plotly 版本
+                angularaxis=dict(gridcolor="rgba(255, 154, 158, 0.3)", tickfont=dict(size=13, color="#5D4037"))
             ),
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#5D4037"), margin=dict(l=40, r=40, t=40, b=40)
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=40, r=40, t=40, b=40)
         )
         return fig
 
-# --- 4. 狀態管理 (含終極防禦) ---
+# --- 4. 狀態管理 ---
 st.markdown('<h1 class="main-title">✨ TAICA 靈魂神獸測驗 ✨</h1>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">AI 驅動・深度探索你的隱藏人格</div>', unsafe_allow_html=True)
 
@@ -184,14 +184,12 @@ with main_c2:
         st.markdown('</div>', unsafe_allow_html=True)
 
     elif st.session_state.step <= 16:
-        # 渲染過去的對話紀錄
         for chat in st.session_state.history:
             with st.chat_message("ai", avatar="🧚"):
                 st.write(chat['q'])
             with st.chat_message("human", avatar="🌸" if st.session_state.gender=="女孩 🌸" else "🍃"):
                 st.write(chat['a'])
                 
-        # 渲染當前題目與快捷選項
         curr_q = st.session_state.questions[st.session_state.step - 1]
         with st.chat_message("ai", avatar="🧚"):
             st.markdown(f"**第 {st.session_state.step}/16 題：**<br><span style='font-size: 1.2rem; color:#5D4037;'>{curr_q['q']}</span>", unsafe_allow_html=True)
@@ -203,7 +201,6 @@ with main_c2:
                     st.session_state.step += 1
                     st.rerun()
                     
-        # 自訂輸入框
         user_input = st.chat_input("選項不夠準？在這裡輸入你自己獨特的想法...")
         if user_input:
             st.session_state.history.append({"q": curr_q['q'], "a": user_input})
@@ -215,7 +212,6 @@ if st.session_state.get('v18_init') and st.session_state.step > 16:
     if not st.session_state.final_report:
         with st.spinner("✨ 測驗完成！大師正在進行 Fuzzy 模糊邏輯運算，並為你召喚專屬守護神獸..."):
             
-            # 🔥 修復 2：加強版提示詞，絕對禁止 AI 幻覺與外洩指令
             analysis_p = f"""
             受試者：{st.session_state.nickname} ({st.session_state.gender})。你現在是結合『模糊邏輯學(Fuzzy Logic)』與『社群遊戲化』的權威 AI。
             請分析受試者的 16 題回答。對每個回答進行「模糊程度」評分 (0~100)。
@@ -252,7 +248,6 @@ if st.session_state.get('v18_init') and st.session_state.step > 16:
                     default_scores = data.get("scores", default_scores)
                     pet_name = data.get("pet", pet_name)
 
-                # 後台日誌與前台清洗 (加入最強暴力濾除)
                 thought_match = re.search(r'<thought_process>(.*?)</thought_process>', raw_res, re.DOTALL | re.IGNORECASE)
                 if thought_match:
                     print(f"\n=== [後台監控] {st.session_state.nickname} 運算日誌 ===\n{thought_match.group(1).strip()}\n====================\n")
