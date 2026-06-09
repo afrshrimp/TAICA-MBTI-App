@@ -4,6 +4,7 @@ TAICA 期末專案修正版
 說明：本系統為課程展示與人格傾向探索用途，非正式心理診斷工具。
 """
 
+import base64
 import html
 import io
 import json
@@ -12,6 +13,7 @@ import re
 import textwrap
 from datetime import datetime
 from pathlib import Path
+import zipfile
 from typing import Any, Dict, List, Optional, Tuple
 
 import plotly.graph_objects as go
@@ -586,6 +588,16 @@ def build_report_html(result: Dict[str, Any]) -> str:
     top_text = "、".join([f"{name} {value}" for name, value in top_traits])
     low_text = "、".join([f"{name} {value}" for name, value in low_traits])
     report_html = markdown_to_simple_html(result["report"])
+    try:
+        summary_b64 = base64.b64encode(build_report_summary_image(result)).decode("ascii")
+        summary_image_html = f"<img src='data:image/png;base64,{summary_b64}' style='max-width:100%; border:1px solid #FFD1DC; border-radius:18px;' alt='報告摘要圖片'>"
+    except Exception:
+        summary_image_html = "<p>摘要圖片無法產生。</p>"
+    try:
+        traits_b64 = base64.b64encode(build_traits_chart_image(result)).decode("ascii")
+        traits_image_html = f"<img src='data:image/png;base64,{traits_b64}' style='max-width:100%; border:1px solid #FFD1DC; border-radius:18px;' alt='12 項延伸特質長條圖'>"
+    except Exception:
+        traits_image_html = "<p>長條圖圖片無法產生。</p>"
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
     return f"""<!doctype html>
 <html lang="zh-Hant">
@@ -621,6 +633,11 @@ h4 {{ color: #6D4C41; }}
 <p><strong>最高 3 項特質：</strong>{html.escape(top_text)}</p>
 <p><strong>較低 3 項特質：</strong>{html.escape(low_text)}</p>
 </div>
+<h2>報告摘要圖片</h2>
+<p>下方圖片已嵌入 HTML，離線開啟時仍可顯示。</p>
+{summary_image_html}
+<h2>12 項延伸特質長條圖</h2>
+{traits_image_html}
 <h2>四向度分數</h2>
 <table><tr><th>向度</th><th>定義</th><th>分數</th></tr>{score_rows}</table>
 <h2>12 項延伸特質分數</h2>
@@ -699,6 +716,11 @@ def build_pdf_report(result: Dict[str, Any]) -> bytes:
 
     radar_png = fig_to_png_bytes(draw_radar(result["scores"], mbti_type), scale=2)
     bar_png = fig_to_png_bytes(draw_extended_traits_bar_chart(traits), scale=2)
+    if not bar_png:
+        try:
+            bar_png = build_traits_chart_image(result)
+        except Exception:
+            bar_png = None
     if radar_png:
         story.append(Paragraph("MBTI 四向度雷達圖", h_style))
         story.append(RLImage(io.BytesIO(radar_png), width=12 * cm, height=8 * cm))
@@ -807,6 +829,122 @@ def build_report_summary_image(result: Dict[str, Any]) -> bytes:
     out = io.BytesIO()
     img.save(out, format="PNG")
     return out.getvalue()
+
+
+def build_traits_chart_image(result: Dict[str, Any]) -> bytes:
+    """以 Pillow 繪製可下載的 12 項延伸特質長條圖 PNG；不依賴 kaleido，較適合 Streamlit Cloud 分享給同學下載。"""
+    if PILImage is None:
+        raise RuntimeError("尚未安裝 pillow，請在 requirements.txt 加入 pillow。")
+
+    font_path = find_cjk_font_path()
+    if not font_path:
+        raise RuntimeError("找不到可支援中文的系統字型，無法輸出中文圖片。")
+
+    traits = compute_extended_traits(result["scores"])
+    groups = [
+        ("社交能量", ["社交互動能量", "獨處恢復能量"]),
+        ("感知風格", ["現實細節敏銳度", "抽象想像延展力"]),
+        ("決策風格", ["邏輯決策強度", "同理協調強度"]),
+        ("執行節奏", ["規劃執行穩定度", "彈性應變開放度"]),
+        ("適配能力", ["自我節奏掌控力", "團隊溝通適配度", "職涯探索適配度", "壓力調節彈性"]),
+    ]
+    palette = {
+        "社交能量": "#FF9A9E",
+        "感知風格": "#F8BBD0",
+        "決策風格": "#CE93D8",
+        "執行節奏": "#90CAF9",
+        "適配能力": "#A5D6A7",
+    }
+
+    font_title = ImageFont.truetype(font_path, 40)
+    font_h = ImageFont.truetype(font_path, 28)
+    font_body = ImageFont.truetype(font_path, 23)
+    font_small = ImageFont.truetype(font_path, 19)
+
+    W, H = 1500, 1350
+    img = PILImage.new("RGB", (W, H), "#FFF5F7")
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle((45, 45, W - 45, H - 45), radius=34, fill="#FFFFFF", outline="#FFD1DC", width=4)
+    y = 90
+    draw.text((85, y), "12 項延伸特質分組長條圖", font=font_title, fill="#AD1457")
+    y += 58
+    draw.text((85, y), f"專屬類型：{type_display(result['type'])}｜50 分為中性參考線", font=font_small, fill="#6D4C41")
+    y += 58
+
+    left_label_x = 105
+    bar_x = 500
+    bar_w = 800
+    bar_h = 30
+    row_gap = 44
+    axis_top = y
+    axis_bottom = H - 115
+
+    # 50 分參考線
+    x50 = bar_x + int(bar_w * 0.5)
+    draw.line((x50, axis_top, x50, axis_bottom), fill="#8D6E63", width=3)
+    draw.text((x50 + 8, axis_top - 28), "50 中性線", font=font_small, fill="#8D6E63")
+
+    for group_name, names in groups:
+        ordered = sorted([(name, traits[name]) for name in names], key=lambda x: x[1], reverse=True)
+        draw.text((left_label_x, y), group_name, font=font_h, fill="#AD1457")
+        y += 42
+        for name, value in ordered:
+            draw.text((left_label_x + 22, y + 2), name, font=font_body, fill="#5D4037")
+            draw.rounded_rectangle((bar_x, y, bar_x + bar_w, y + bar_h), radius=15, fill="#FFE4E1")
+            fill_w = int(bar_w * value / 100)
+            draw.rounded_rectangle((bar_x, y, bar_x + fill_w, y + bar_h), radius=15, fill=palette[group_name])
+            draw.text((bar_x + bar_w + 25, y - 1), f"{value} / 100", font=font_body, fill="#5D4037")
+            y += row_gap
+        y += 22
+
+    # x 軸標籤
+    axis_y = H - 82
+    draw.line((bar_x, axis_y, bar_x + bar_w, axis_y), fill="#D7CCC8", width=2)
+    for tick in [0, 25, 50, 75, 100]:
+        tx = bar_x + int(bar_w * tick / 100)
+        draw.line((tx, axis_y - 8, tx, axis_y + 8), fill="#8D6E63", width=2)
+        draw.text((tx - 18, axis_y + 14), str(tick), font=font_small, fill="#6D4C41")
+
+    out = io.BytesIO()
+    img.save(out, format="PNG")
+    return out.getvalue()
+
+
+def safe_export_filename(name: str) -> str:
+    """清理下載檔名，避免暱稱含有檔案系統不適合字元。"""
+    cleaned = re.sub(r"[^\w\u4e00-\u9fff.-]+", "_", str(name).strip())
+    return cleaned or "user"
+
+
+def build_export_zip(result: Dict[str, Any]) -> bytes:
+    """建立一鍵下載 ZIP：包含 TXT、HTML、PDF、摘要 PNG、長條圖 PNG，讓同學不需逐一下載。"""
+    nickname = safe_export_filename(st.session_state.get("nickname", "user"))
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"TAICA_MBTI_Report_{nickname}.txt", build_download_text(result))
+        zf.writestr(f"TAICA_MBTI_Report_{nickname}.html", build_report_html(result).encode("utf-8"))
+
+        try:
+            zf.writestr(f"TAICA_MBTI_Report_{nickname}.pdf", build_pdf_report(result))
+        except Exception as exc:
+            zf.writestr("PDF_Export_Error.txt", f"PDF 產生失敗：{exc}")
+
+        try:
+            zf.writestr(f"TAICA_MBTI_Summary_{nickname}.png", build_report_summary_image(result))
+        except Exception as exc:
+            zf.writestr("Summary_Image_Error.txt", f"摘要圖片產生失敗：{exc}")
+
+        try:
+            # 優先使用純 Pillow 版本，部署到雲端時比 kaleido 更不容易失敗。
+            zf.writestr(f"TAICA_MBTI_Traits_Bar_{nickname}.png", build_traits_chart_image(result))
+        except Exception as exc:
+            bar_png = fig_to_png_bytes(draw_extended_traits_bar_chart(compute_extended_traits(result["scores"])), scale=2)
+            if bar_png:
+                zf.writestr(f"TAICA_MBTI_Traits_Bar_{nickname}.png", bar_png)
+            else:
+                zf.writestr("Traits_Bar_Image_Error.txt", f"長條圖圖片產生失敗：{exc}")
+    buffer.seek(0)
+    return buffer.getvalue()
 
 def build_download_text(result: Dict[str, Any]) -> str:
     """整理可下載的純文字報告。"""
@@ -1468,56 +1606,74 @@ else:
             for trait_name, trait_score in traits.items():
                 st.write(f"**{trait_name}**：{trait_score} / 100")
 
-        st.download_button(
-            label="📄 下載分析報告 TXT",
-            data=build_download_text(result),
-            file_name=f"TAICA_MBTI_Report_{st.session_state.nickname}.txt",
-            mime="text/plain",
-        )
-
         st.markdown("#### 匯出報告版面")
-        st.caption("HTML 可直接用瀏覽器開啟並列印成 PDF；PDF 與 PNG 需要額外套件支援。")
+        st.caption("手機使用者建議直接下載 PDF 或 PNG；ZIP 會放在下方進階選項，避免手機還要解壓縮。")
 
+        export_name = safe_export_filename(st.session_state.nickname)
         html_report = build_report_html(result)
-        st.download_button(
-            label="🌐 下載完整報告 HTML",
-            data=html_report.encode("utf-8"),
-            file_name=f"TAICA_MBTI_Report_{st.session_state.nickname}.html",
-            mime="text/html",
-        )
+        txt_report = build_download_text(result)
 
-        bar_png = fig_to_png_bytes(draw_extended_traits_bar_chart(compute_extended_traits(result["scores"])), scale=2)
-        if bar_png:
+        try:
+            pdf_report = build_pdf_report(result)
             st.download_button(
-                label="📊 下載 12 項特質長條圖 PNG",
-                data=bar_png,
-                file_name=f"TAICA_MBTI_Traits_{st.session_state.nickname}.png",
-                mime="image/png",
+                label="📕 手機優先：下載完整報告 PDF",
+                data=pdf_report,
+                file_name=f"TAICA_MBTI_Report_{export_name}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
             )
-        else:
-            st.info("若要下載圖表 PNG，請在 requirements.txt 加入 kaleido。")
+        except Exception as exc:
+            st.info(f"PDF 尚無法產生：{exc}")
 
         try:
             summary_png = build_report_summary_image(result)
             st.download_button(
-                label="🖼️ 下載報告摘要圖片 PNG",
+                label="🖼️ 手機優先：下載報告摘要圖片 PNG",
                 data=summary_png,
-                file_name=f"TAICA_MBTI_Summary_{st.session_state.nickname}.png",
+                file_name=f"TAICA_MBTI_Summary_{export_name}.png",
                 mime="image/png",
+                use_container_width=True,
             )
         except Exception as exc:
             st.info(f"摘要圖片尚無法產生：{exc}")
 
         try:
-            pdf_report = build_pdf_report(result)
+            traits_png = build_traits_chart_image(result)
             st.download_button(
-                label="📕 下載完整報告 PDF",
-                data=pdf_report,
-                file_name=f"TAICA_MBTI_Report_{st.session_state.nickname}.pdf",
-                mime="application/pdf",
+                label="📊 下載 12 項特質長條圖 PNG",
+                data=traits_png,
+                file_name=f"TAICA_MBTI_Traits_Bar_{export_name}.png",
+                mime="image/png",
+                use_container_width=True,
             )
         except Exception as exc:
-            st.info(f"PDF 尚無法產生：{exc}")
+            st.info(f"長條圖圖片尚無法產生：{exc}")
+
+        st.download_button(
+            label="🌐 下載完整報告 HTML",
+            data=html_report.encode("utf-8"),
+            file_name=f"TAICA_MBTI_Report_{export_name}.html",
+            mime="text/html",
+            use_container_width=True,
+        )
+
+        st.download_button(
+            label="📄 下載純文字報告 TXT",
+            data=txt_report,
+            file_name=f"TAICA_MBTI_Report_{export_name}.txt",
+            mime="text/plain",
+            use_container_width=True,
+        )
+
+        with st.expander("電腦使用者進階下載：完整報告包 ZIP", expanded=False):
+            st.caption("ZIP 適合電腦一次保存所有檔案；手機使用者建議下載上方 PDF 或 PNG。")
+            st.download_button(
+                label="📦 一鍵下載完整報告包 ZIP",
+                data=build_export_zip(result),
+                file_name=f"TAICA_MBTI_Export_{export_name}.zip",
+                mime="application/zip",
+                use_container_width=True,
+            )
 
         if st.button("🔁 重新生成 AI 分析"):
             st.session_state.analysis_result = None
