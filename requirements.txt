@@ -1,3 +1,6 @@
 streamlit
 plotly
 groq
+reportlab
+pillow
+kaleido
