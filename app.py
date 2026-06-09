@@ -4,21 +4,61 @@ TAICA 期末專案修正版
 說明：本系統為課程展示與人格傾向探索用途，非正式心理診斷工具。
 """
 
+import html
+import io
 import json
 import random
 import re
-from typing import Any, Dict, List, Tuple
+import textwrap
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 import plotly.graph_objects as go
 import streamlit as st
 from groq import Groq
+
+try:
+    from PIL import Image as PILImage, ImageDraw, ImageFont
+except Exception:
+    PILImage = None
+    ImageDraw = None
+    ImageFont = None
+
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import Image as RLImage
+    from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+except Exception:
+    colors = None
+    TA_CENTER = None
+    TA_LEFT = None
+    A4 = None
+    ParagraphStyle = None
+    getSampleStyleSheet = None
+    cm = None
+    pdfmetrics = None
+    TTFont = None
+    RLImage = None
+    PageBreak = None
+    Paragraph = None
+    SimpleDocTemplate = None
+    Spacer = None
+    Table = None
+    TableStyle = None
 
 
 # ============================================================
 # 1. 基本設定與題庫
 # ============================================================
 APP_TITLE = "AI 讀心術：結合語意分析與 MBTI 理論的次世代性格檢測工具"
-APP_SUBTITLE = "以選項輔助、開放式回答、語意分析與 MBTI 四向度架構進行人格傾向探索"
+APP_SUBTITLE = "以選項輔助、開放式回答、語意分析與 MBTI 四向度架構，免費產生中文類型與進階人格報告"
 TOTAL_QUESTIONS = 16
 DEFAULT_MODEL = "llama-3.1-8b-instant"
 
@@ -394,12 +434,389 @@ def draw_radar(scores: Dict[str, int], mbti_type: str) -> go.Figure:
     return fig
 
 
+def draw_extended_traits_bar_chart(traits: Dict[str, int]) -> go.Figure:
+    """繪製 12 項延伸特質分組長條圖，利於教師與使用者快速比較高低分布。"""
+    trait_category = {
+        "社交互動能量": ("社交能量", "#FF9A9E"),
+        "獨處恢復能量": ("社交能量", "#FF9A9E"),
+        "現實細節敏銳度": ("感知風格", "#F8BBD0"),
+        "抽象想像延展力": ("感知風格", "#F8BBD0"),
+        "邏輯決策強度": ("決策風格", "#CE93D8"),
+        "同理協調強度": ("決策風格", "#CE93D8"),
+        "規劃執行穩定度": ("執行節奏", "#90CAF9"),
+        "彈性應變開放度": ("執行節奏", "#90CAF9"),
+        "自我節奏掌控力": ("適配能力", "#A5D6A7"),
+        "團隊溝通適配度": ("適配能力", "#A5D6A7"),
+        "職涯探索適配度": ("適配能力", "#A5D6A7"),
+        "壓力調節彈性": ("適配能力", "#A5D6A7"),
+    }
+    category_order = ["社交能量", "感知風格", "決策風格", "執行節奏", "適配能力"]
+    ordered_items = sorted(
+        traits.items(),
+        key=lambda item: (category_order.index(trait_category[item[0]][0]), -item[1]),
+    )
+
+    labels = [f"{trait_category[name][0]}｜{name}" for name, _ in ordered_items]
+    values = [value for _, value in ordered_items]
+    colors = [trait_category[name][1] for name, _ in ordered_items]
+    category_for_hover = [trait_category[name][0] for name, _ in ordered_items]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=values,
+            y=labels,
+            orientation="h",
+            text=[f"{v} / 100" for v in values],
+            textposition="outside",
+            marker=dict(color=colors, line=dict(color="#6D4C41", width=0.8)),
+            customdata=category_for_hover,
+            hovertemplate="類別：%{customdata}<br>%{y}<br>分數：%{x} / 100<extra></extra>",
+        )
+    )
+    fig.add_vline(
+        x=50,
+        line_width=2,
+        line_dash="dash",
+        line_color="#8D6E63",
+        annotation_text="50：中性參考線",
+        annotation_position="top",
+    )
+    fig.update_layout(
+        title="12 項延伸特質分組長條圖",
+        xaxis=dict(range=[0, 100], title="分數", gridcolor="#FFE4E1"),
+        yaxis=dict(title="特質類別｜特質項目", automargin=True),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#5D4037"),
+        margin=dict(l=20, r=80, t=60, b=40),
+        height=620,
+    )
+    fig.update_yaxes(autorange="reversed")
+    return fig
+
+
+def summarize_extended_traits(traits: Dict[str, int]) -> Tuple[List[Tuple[str, int]], List[Tuple[str, int]]]:
+    """回傳前三高與前三低特質，作為結果頁的快速摘要。"""
+    sorted_items = sorted(traits.items(), key=lambda item: item[1], reverse=True)
+    return sorted_items[:3], sorted_items[-3:]
+
+
+def find_cjk_font_path() -> Optional[str]:
+    """尋找可支援繁體中文的字型，供 PDF 與圖片輸出使用。"""
+    candidates = [
+        # Windows
+        r"C:/Windows/Fonts/msjh.ttc",
+        r"C:/Windows/Fonts/msjh.ttf",
+        r"C:/Windows/Fonts/mingliu.ttc",
+        # macOS
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/Library/Fonts/Arial Unicode.ttf",
+        # Linux / Streamlit Cloud common paths
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+    for path in candidates:
+        if Path(path).exists():
+            return path
+    return None
+
+
+def markdown_to_plain_text(markdown_text: str) -> str:
+    """將報告中的 Markdown 簡化為純文字，方便輸出 PDF 與圖片。"""
+    text = re.sub(r"```.*?```", "", markdown_text or "", flags=re.DOTALL)
+    text = re.sub(r"#{1,6}\s*", "", text)
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"\*(.*?)\*", r"\1", text)
+    text = re.sub(r"^\s*[-*]\s+", "- ", text, flags=re.MULTILINE)
+    return text.strip()
+
+
+def markdown_to_simple_html(markdown_text: str) -> str:
+    """將報告 Markdown 轉成簡易 HTML，不依賴額外套件。"""
+    html_lines = []
+    for raw_line in (markdown_text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            html_lines.append("<br>")
+            continue
+        clean = html.escape(line)
+        clean = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", clean)
+        if line.startswith("### "):
+            html_lines.append(f"<h2>{clean[4:]}</h2>")
+        elif line.startswith("#### "):
+            html_lines.append(f"<h3>{clean[5:]}</h3>")
+        elif line.startswith("##### "):
+            html_lines.append(f"<h4>{clean[6:]}</h4>")
+        elif re.match(r"^\d+[.、]", line):
+            html_lines.append(f"<p class='item'>{clean}</p>")
+        elif line.startswith("- "):
+            html_lines.append(f"<p class='item'>{clean}</p>")
+        else:
+            html_lines.append(f"<p>{clean}</p>")
+    return "\n".join(html_lines)
+
+
+def fig_to_png_bytes(fig: go.Figure, scale: int = 2) -> Optional[bytes]:
+    """將 Plotly 圖表匯出為 PNG。需要安裝 kaleido。"""
+    try:
+        return fig.to_image(format="png", scale=scale)
+    except Exception:
+        return None
+
+
+def build_report_html(result: Dict[str, Any]) -> str:
+    """建立可下載、可用瀏覽器列印為 PDF 的完整 HTML 報告。"""
+    mbti_type = result["type"]
+    type_info = get_type_info(mbti_type)
+    traits = compute_extended_traits(result["scores"])
+    top_traits, low_traits = summarize_extended_traits(traits)
+    score_rows = "".join(
+        f"<tr><td>{html.escape(dim)}</td><td>{html.escape(DIMENSION_RULES[dim]['label'])}</td><td>{score} / 100</td></tr>"
+        for dim, score in result["scores"].items()
+    )
+    trait_rows = "".join(
+        f"<tr><td>{html.escape(name)}</td><td>{value} / 100</td></tr>"
+        for name, value in traits.items()
+    )
+    top_text = "、".join([f"{name} {value}" for name, value in top_traits])
+    low_text = "、".join([f"{name} {value}" for name, value in low_traits])
+    report_html = markdown_to_simple_html(result["report"])
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    return f"""<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>{html.escape(APP_TITLE)} - {html.escape(type_display(mbti_type))}</title>
+<style>
+@page {{ size: A4; margin: 1.6cm; }}
+body {{ font-family: 'Microsoft JhengHei', 'Noto Sans CJK TC', Arial, sans-serif; background: #FFF5F7; color: #5D4037; line-height: 1.75; }}
+.report {{ max-width: 900px; margin: 0 auto; background: white; border: 2px solid #FFD1DC; border-radius: 24px; padding: 34px; box-shadow: 0 8px 28px rgba(255, 126, 179, 0.16); }}
+h1 {{ color: #FF7EB3; text-align: center; margin-bottom: 8px; }}
+.subtitle {{ text-align: center; color: #6D4C41; margin-bottom: 24px; }}
+.badge {{ display: inline-block; padding: 8px 14px; border-radius: 999px; background: #FCE4EC; color: #AD1457; font-weight: 700; }}
+.summary {{ border-left: 6px solid #FF9A9E; background: #FFF8FA; padding: 16px 18px; border-radius: 14px; margin: 18px 0; }}
+table {{ width: 100%; border-collapse: collapse; margin: 12px 0 22px; }}
+th, td {{ border-bottom: 1px solid #F8BBD0; padding: 9px 10px; text-align: left; }}
+th {{ background: #FFF0F3; color: #6D4C41; }}
+h2, h3 {{ color: #AD1457; }}
+h4 {{ color: #6D4C41; }}
+.item {{ margin-left: 12px; }}
+.footer {{ margin-top: 28px; font-size: 0.9rem; color: #795548; border-top: 1px dashed #F8BBD0; padding-top: 12px; }}
+@media print {{ body {{ background: white; }} .report {{ box-shadow: none; border: none; }} }}
+</style>
+</head>
+<body>
+<div class="report">
+<h1>{html.escape(APP_TITLE)}</h1>
+<div class="subtitle">生成時間：{generated_at}</div>
+<div class="summary">
+<div class="badge">專屬類型：{html.escape(type_display(mbti_type))}</div>
+<p><strong>中文稱呼：</strong>{html.escape(type_info['zh'])}</p>
+<p><strong>類型摘要：</strong>{html.escape(type_info['brief'])}</p>
+<p><strong>最高 3 項特質：</strong>{html.escape(top_text)}</p>
+<p><strong>較低 3 項特質：</strong>{html.escape(low_text)}</p>
+</div>
+<h2>四向度分數</h2>
+<table><tr><th>向度</th><th>定義</th><th>分數</th></tr>{score_rows}</table>
+<h2>12 項延伸特質分數</h2>
+<table><tr><th>特質</th><th>分數</th></tr>{trait_rows}</table>
+<h2>完整分析報告</h2>
+{report_html}
+<div class="footer">本結果僅供課程展示與人格傾向探索使用，不作為正式心理診斷依據。可使用瀏覽器列印功能另存為 PDF。</div>
+</div>
+</body>
+</html>"""
+
+
+def build_pdf_report(result: Dict[str, Any]) -> bytes:
+    """建立 PDF 報告。需要 reportlab；圖表匯出需要 kaleido。"""
+    if SimpleDocTemplate is None:
+        raise RuntimeError("尚未安裝 reportlab，請在 requirements.txt 加入 reportlab。")
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.55 * cm,
+        leftMargin=1.55 * cm,
+        topMargin=1.45 * cm,
+        bottomMargin=1.45 * cm,
+    )
+
+    font_name = "Helvetica"
+    cjk_font = find_cjk_font_path()
+    if cjk_font:
+        try:
+            pdfmetrics.registerFont(TTFont("CJKFont", cjk_font))
+            font_name = "CJKFont"
+        except Exception:
+            font_name = "Helvetica"
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("TitleCJK", parent=styles["Title"], fontName=font_name, fontSize=18, leading=24, alignment=TA_CENTER, textColor=colors.HexColor("#AD1457"))
+    h_style = ParagraphStyle("HeadingCJK", parent=styles["Heading2"], fontName=font_name, fontSize=13, leading=18, textColor=colors.HexColor("#AD1457"), spaceBefore=10, spaceAfter=6)
+    body_style = ParagraphStyle("BodyCJK", parent=styles["BodyText"], fontName=font_name, fontSize=10.5, leading=16, alignment=TA_LEFT)
+    small_style = ParagraphStyle("SmallCJK", parent=body_style, fontSize=9, leading=13, textColor=colors.HexColor("#6D4C41"))
+
+    mbti_type = result["type"]
+    type_info = get_type_info(mbti_type)
+    traits = compute_extended_traits(result["scores"])
+    top_traits, low_traits = summarize_extended_traits(traits)
+    story = []
+
+    def p(text: str, style=body_style):
+        safe = html.escape(str(text)).replace("\n", "<br/>")
+        story.append(Paragraph(safe, style))
+
+    story.append(Paragraph(html.escape(APP_TITLE), title_style))
+    story.append(Spacer(1, 0.25 * cm))
+    p(f"專屬類型：{type_display(mbti_type)}", h_style)
+    p(f"類型摘要：{type_info['brief']}")
+    p(f"生成時間：{datetime.now().strftime('%Y-%m-%d %H:%M')}", small_style)
+    story.append(Spacer(1, 0.25 * cm))
+
+    score_data = [["向度", "定義", "分數"]] + [
+        [dim, DIMENSION_RULES[dim]["label"], f"{score} / 100"]
+        for dim, score in result["scores"].items()
+    ]
+    table = Table(score_data, colWidths=[2.3 * cm, 8.5 * cm, 3.0 * cm])
+    table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), font_name),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#FCE4EC")),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#F8BBD0")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
+        ("LEADING", (0, 0), (-1, -1), 12),
+    ]))
+    story.append(Paragraph("四向度分數", h_style))
+    story.append(table)
+    story.append(Spacer(1, 0.3 * cm))
+
+    radar_png = fig_to_png_bytes(draw_radar(result["scores"], mbti_type), scale=2)
+    bar_png = fig_to_png_bytes(draw_extended_traits_bar_chart(traits), scale=2)
+    if radar_png:
+        story.append(Paragraph("MBTI 四向度雷達圖", h_style))
+        story.append(RLImage(io.BytesIO(radar_png), width=12 * cm, height=8 * cm))
+    if bar_png:
+        story.append(Paragraph("12 項延伸特質長條圖", h_style))
+        story.append(RLImage(io.BytesIO(bar_png), width=15.5 * cm, height=10.5 * cm))
+
+    story.append(PageBreak())
+    trait_data = [["特質", "分數"]] + [[name, f"{value} / 100"] for name, value in traits.items()]
+    trait_table = Table(trait_data, colWidths=[10.5 * cm, 3.2 * cm])
+    trait_table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), font_name),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#FCE4EC")),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#F8BBD0")),
+        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
+        ("LEADING", (0, 0), (-1, -1), 12),
+    ]))
+    story.append(Paragraph("12 項延伸特質分數", h_style))
+    story.append(trait_table)
+    story.append(Spacer(1, 0.25 * cm))
+    p("最高 3 項特質：" + "、".join([f"{name} {value}" for name, value in top_traits]))
+    p("較低 3 項特質：" + "、".join([f"{name} {value}" for name, value in low_traits]))
+
+    story.append(Paragraph("完整分析報告", h_style))
+    plain_report = markdown_to_plain_text(result["report"])
+    for block in plain_report.split("\n"):
+        if block.strip():
+            p(block.strip())
+        else:
+            story.append(Spacer(1, 0.15 * cm))
+
+    story.append(Spacer(1, 0.25 * cm))
+    p("註：本結果僅供課程展示與人格傾向探索使用，不作為正式心理診斷依據。", small_style)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def build_report_summary_image(result: Dict[str, Any]) -> bytes:
+    """建立一張摘要圖片 PNG，適合社群分享或放入簡報。需要 pillow。"""
+    if PILImage is None:
+        raise RuntimeError("尚未安裝 pillow，請在 requirements.txt 加入 pillow。")
+
+    font_path = find_cjk_font_path()
+    if not font_path:
+        raise RuntimeError("找不到可支援中文的系統字型，無法輸出中文圖片。")
+
+    W, H = 1200, 1600
+    img = PILImage.new("RGB", (W, H), "#FFF5F7")
+    draw = ImageDraw.Draw(img)
+    font_title = ImageFont.truetype(font_path, 42)
+    font_h = ImageFont.truetype(font_path, 30)
+    font_body = ImageFont.truetype(font_path, 24)
+    font_small = ImageFont.truetype(font_path, 20)
+
+    def draw_text_wrapped(text: str, x: int, y: int, font, fill="#5D4037", width_chars=34, line_gap=10):
+        lines = []
+        for para in str(text).split("\n"):
+            lines.extend(textwrap.wrap(para, width=width_chars) or [""])
+        for line in lines:
+            draw.text((x, y), line, font=font, fill=fill)
+            y += font.size + line_gap
+        return y
+
+    # Card background
+    draw.rounded_rectangle((60, 55, W - 60, H - 55), radius=38, fill="#FFFFFF", outline="#FFD1DC", width=4)
+    y = 105
+    y = draw_text_wrapped(APP_TITLE, 105, y, font_title, fill="#AD1457", width_chars=24, line_gap=12)
+    y += 12
+    mbti_type = result["type"]
+    info = get_type_info(mbti_type)
+    draw.rounded_rectangle((105, y, 1095, y + 92), radius=28, fill="#FCE4EC")
+    draw.text((135, y + 24), f"專屬類型：{type_display(mbti_type)}", font=font_h, fill="#AD1457")
+    y += 120
+    y = draw_text_wrapped(f"類型摘要：{info['brief']}", 105, y, font_body, width_chars=34)
+    y += 14
+
+    draw.text((105, y), "四向度分數", font=font_h, fill="#AD1457")
+    y += 48
+    for dim, score in result["scores"].items():
+        label = DIMENSION_RULES[dim]["label"]
+        bar_x, bar_y = 105, y + 34
+        draw.text((105, y), f"{dim}｜{label}：{score} / 100", font=font_body, fill="#5D4037")
+        draw.rounded_rectangle((bar_x, bar_y, 1095, bar_y + 22), radius=11, fill="#FFE4E1")
+        draw.rounded_rectangle((bar_x, bar_y, bar_x + int(990 * score / 100), bar_y + 22), radius=11, fill="#FF9A9E")
+        y += 82
+
+    traits = compute_extended_traits(result["scores"])
+    top_traits, low_traits = summarize_extended_traits(traits)
+    y += 12
+    draw.text((105, y), "最高 3 項特質", font=font_h, fill="#AD1457")
+    y += 46
+    for name, value in top_traits:
+        draw.text((125, y), f"- {name}：{value} / 100", font=font_body, fill="#5D4037")
+        y += 38
+    y += 18
+    draw.text((105, y), "較低 3 項特質", font=font_h, fill="#AD1457")
+    y += 46
+    for name, value in low_traits:
+        draw.text((125, y), f"- {name}：{value} / 100", font=font_body, fill="#5D4037")
+        y += 38
+
+    y += 22
+    footer = "本結果僅供課程展示與人格傾向探索使用，不作為正式心理診斷依據。"
+    draw_text_wrapped(footer, 105, y, font_small, fill="#795548", width_chars=42)
+    out = io.BytesIO()
+    img.save(out, format="PNG")
+    return out.getvalue()
+
 def build_download_text(result: Dict[str, Any]) -> str:
     """整理可下載的純文字報告。"""
     score_lines = "\n".join([f"- {dim}：{score}" for dim, score in result["scores"].items()])
+    mbti_type = result["type"]
     return f"""{APP_TITLE}
 
-專屬類型：{result['type']}
+專屬類型：{type_display(mbti_type)}
+中文稱呼：{get_type_info(mbti_type)['zh']}
+類型摘要：{get_type_info(mbti_type)['brief']}
 
 四向度分數：
 {score_lines}
@@ -440,6 +857,133 @@ MBTI_TYPES = {
     "ISTJ", "ISFJ", "INFJ", "INTJ", "ISTP", "ISFP", "INFP", "INTP",
     "ESTP", "ESFP", "ENFP", "ENTP", "ESTJ", "ESFJ", "ENFJ", "ENTJ"
 }
+
+# 中文稱呼採本專案自訂命名，避免使用商業測驗網站的專有包裝。
+# 用途是讓一般使用者看懂 MBTI 簡稱背後的性格輪廓。
+MBTI_TYPE_INFO = {
+    "ISTJ": {"zh": "穩健執行者", "brief": "重視責任、秩序、細節與可靠執行。"},
+    "ISFJ": {"zh": "溫暖守護者", "brief": "細心、負責、重視安全感與實際照顧。"},
+    "INFJ": {"zh": "洞察引導者", "brief": "重視意義、同理與長遠方向，善於理解他人。"},
+    "INTJ": {"zh": "策略規劃者", "brief": "重視系統、遠見、效率與長期規劃。"},
+    "ISTP": {"zh": "冷靜實作者", "brief": "擅長分析現況、拆解問題與即時處理。"},
+    "ISFP": {"zh": "感性創作者", "brief": "重視感受、審美、自由與個人價值。"},
+    "INFP": {"zh": "理想調和者", "brief": "重視真誠、價值感、想像力與內在一致。"},
+    "INTP": {"zh": "邏輯探索者", "brief": "喜歡推理、探索原理與建立自己的理解系統。"},
+    "ESTP": {"zh": "行動挑戰者", "brief": "反應快、重視實作、喜歡即時挑戰與現場感。"},
+    "ESFP": {"zh": "活力表現者", "brief": "外放、親和、享受體驗並善於帶動氣氛。"},
+    "ENFP": {"zh": "靈感倡議者", "brief": "充滿想法、重視可能性、人際連結與自我實現。"},
+    "ENTP": {"zh": "創新辯論者", "brief": "喜歡發想、挑戰框架、討論觀點與快速試錯。"},
+    "ESTJ": {"zh": "高效管理者", "brief": "重視規則、效率、責任分工與明確成果。"},
+    "ESFJ": {"zh": "關懷協調者", "brief": "重視人際和諧、照顧需求與團體秩序。"},
+    "ENFJ": {"zh": "鼓舞領導者", "brief": "善於支持他人、凝聚方向與帶動團隊成長。"},
+    "ENTJ": {"zh": "果斷指揮者", "brief": "目標導向、重視策略、組織效率與決策力。"},
+}
+
+
+def get_type_info(mbti_type: str) -> Dict[str, str]:
+    return MBTI_TYPE_INFO.get(mbti_type, {"zh": "人格傾向未定義", "brief": "此類型需要更多作答資料輔助判讀。"})
+
+
+def type_display(mbti_type: str) -> str:
+    info = get_type_info(mbti_type)
+    return f"{mbti_type}｜{info['zh']}"
+
+
+def clamp_score(value: float) -> int:
+    return max(0, min(100, int(round(value))))
+
+
+def compute_extended_traits(scores: Dict[str, int]) -> Dict[str, int]:
+    """
+    由四向度分數延伸出的 12 項輔助特質分數。
+    注意：這些不是正式心理量表，而是本課程專案依 MBTI 四向度設計的可解釋指標。
+    """
+    ei = scores.get("E-I", 50)
+    sn = scores.get("S-N", 50)
+    tf = scores.get("T-F", 50)
+    jp = scores.get("J-P", 50)
+    balance = lambda x: 100 - abs(x - 50) * 2
+    return {
+        "社交互動能量": clamp_score(ei),
+        "獨處恢復能量": clamp_score(100 - ei),
+        "現實細節敏銳度": clamp_score(sn),
+        "抽象想像延展力": clamp_score(100 - sn),
+        "邏輯決策強度": clamp_score(tf),
+        "同理協調強度": clamp_score(100 - tf),
+        "規劃執行穩定度": clamp_score(jp),
+        "彈性應變開放度": clamp_score(100 - jp),
+        "自我節奏掌控力": clamp_score((100 - ei) * 0.35 + jp * 0.35 + sn * 0.30),
+        "團隊溝通適配度": clamp_score(ei * 0.30 + (100 - tf) * 0.35 + jp * 0.15 + balance(sn) * 0.20),
+        "職涯探索適配度": clamp_score(tf * 0.25 + sn * 0.20 + (100 - sn) * 0.20 + jp * 0.15 + balance(ei) * 0.20),
+        "壓力調節彈性": clamp_score((100 - jp) * 0.35 + balance(tf) * 0.30 + (100 - ei) * 0.20 + balance(sn) * 0.15),
+    }
+
+
+def extended_trait_lines(scores: Dict[str, int]) -> List[str]:
+    traits = compute_extended_traits(scores)
+    return [f"- {name}：{value} / 100" for name, value in traits.items()]
+
+
+def extended_sections(mbti_type: str, scores: Dict[str, int]) -> List[str]:
+    """產生免費進階報告段落：12 項額外特質、職涯、工作、關係與能量驅動。"""
+    info = get_type_info(mbti_type)
+    traits = compute_extended_traits(scores)
+    ei, sn, tf, jp = scores["E-I"], scores["S-N"], scores["T-F"], scores["J-P"]
+
+    career_by_type = {
+        "ISTJ": ["資料整理／行政管理", "品管與流程管理", "財務、稽核或專案控管"],
+        "ISFJ": ["教育輔導", "照護服務", "行政支援與客戶成功"],
+        "INFJ": ["心理／教育相關助人工作", "品牌內容與研究企劃", "非營利與社會影響專案"],
+        "INTJ": ["系統分析", "策略規劃", "研究開發與資料分析"],
+        "ISTP": ["工程維修與技術實作", "產品測試", "現場問題排除"],
+        "ISFP": ["設計、影像與美感創作", "手作與體驗設計", "人文服務型工作"],
+        "INFP": ["文字創作", "諮詢輔導", "內容策展與社群議題"],
+        "INTP": ["研究分析", "程式與系統設計", "資料科學與理論建模"],
+        "ESTP": ["業務開發", "活動執行", "創業與現場營運"],
+        "ESFP": ["行銷活動", "表演與內容創作", "顧客服務與體驗設計"],
+        "ENFP": ["創意企劃", "教育推廣", "社群經營與跨域專案"],
+        "ENTP": ["產品企劃", "創新提案", "顧問、辯論與策略發想"],
+        "ESTJ": ["管理職", "營運流程設計", "專案管理與制度建置"],
+        "ESFJ": ["人資與訓練", "公關活動", "顧客關係與團隊協調"],
+        "ENFJ": ["教育培訓", "組織發展", "品牌溝通與團隊領導"],
+        "ENTJ": ["企業策略", "高階專案管理", "創業、商業開發與組織領導"],
+    }
+    career = career_by_type.get(mbti_type, ["跨域企劃", "資料分析", "專案協作"])
+
+    work_style = []
+    work_style.append("適合有明確目標與可追蹤成果的任務。" if jp >= 50 else "適合保留彈性、允許探索與快速調整的任務。")
+    work_style.append("偏好具體資訊、規則與實際案例。" if sn >= 50 else "偏好概念發想、可能性推演與整體方向。")
+    work_style.append("決策時較重視邏輯、效率與原則。" if tf >= 50 else "決策時較重視人際影響、價值感與感受。")
+
+    relationship = []
+    relationship.append("在人際關係中較需要安靜空間與熟悉感，深度關係通常比大量社交更重要。" if ei < 50 else "在人際關係中較容易透過互動獲得能量，也較願意主動建立連結。")
+    relationship.append("溝通上適合把事實、需求與期待說清楚。" if tf >= 50 else "溝通上適合先確認情緒與感受，再討論問題本身。")
+
+    drivers = []
+    drivers.append("完成明確任務與看見具體成果" if sn >= 50 else "探索新想法與看見未來可能")
+    drivers.append("獨處整理後重新取得掌控感" if ei < 50 else "透過互動、討論與外部回饋獲得動力")
+    drivers.append("建立秩序與穩定節奏" if jp >= 50 else "保留自由度與臨場調整空間")
+
+    return [
+        "#### 六、12 項額外特質分數｜本系統免費提供",
+        "以下分數由四向度結果延伸推估，屬於課程專案的輔助分析指標，目的在於提供比簡稱更具體的自我理解。",
+        *extended_trait_lines(scores),
+        "",
+        "#### 七、職涯點子",
+        f"依據 **{type_display(mbti_type)}** 的傾向，可優先探索：" + "、".join(career) + "。",
+        "",
+        "#### 八、工作特質",
+        *[f"- {item}" for item in work_style],
+        "",
+        "#### 九、關係模式",
+        *[f"- {item}" for item in relationship],
+        "",
+        "#### 十、能量驅動因素",
+        *[f"- {item}" for item in drivers],
+        "",
+        "#### 十一、免費進階報告說明",
+        "本專案將 MBTI 簡稱、中文稱呼、12 項延伸特質、職涯點子、工作特質、關係模式與能量驅動因素整合在同一份報告中，讓使用者不需付費也能取得更完整的自我探索回饋。",
+    ]
 
 
 def score_preset_answer(question: str, answer: str) -> int:
@@ -548,11 +1092,12 @@ def report_has_conflicting_type(report: str, expected_type: str) -> bool:
 
 def render_fallback_report(nickname: str, scores: Dict[str, int], mbti_type: str, history: List[Dict[str, str]]) -> str:
     """當 AI 報告矛盾或 API 無法使用時，以程式端產生穩定且術語正確的報告。"""
+    info = get_type_info(mbti_type)
     lines = [
         f"### 🌸 TAICA 專屬人格解析 - {nickname} 🌸",
         "",
         "#### 一、整體人格傾向",
-        f"依據本次 16 題作答紀錄，系統推估你的人格傾向為 **{mbti_type}**。此類型代表四向度的綜合結果，但若某些分數接近 50，表示該向度並非強烈偏向單一端點，而是會依情境調整。",
+        f"依據本次 16 題作答紀錄，系統推估你的人格傾向為 **{type_display(mbti_type)}**。{info['brief']} 此類型代表四向度的綜合結果；若某些分數接近 50，表示該向度並非強烈偏向單一端點，而是會依情境調整。",
         "",
         "#### 二、四向度分析",
     ]
@@ -574,7 +1119,11 @@ def render_fallback_report(nickname: str, scores: Dict[str, int], mbti_type: str
         "2. 若偏好彈性安排，建議仍保留最低限度的時間表與優先順序，避免臨近截止時壓力過高。",
         "3. 做決策時可同時列出『客觀理由』與『個人感受』，讓判斷更完整。",
         "",
-        "#### 五、提醒",
+    ])
+    lines.extend(extended_sections(mbti_type, scores))
+    lines.extend([
+        "",
+        "#### 十二、提醒",
         "本結果僅供自我探索與課程展示使用，不代表正式心理診斷。",
     ])
     return "\n".join(lines)
@@ -601,6 +1150,8 @@ class TAICAAIAnalyzer:
 【最重要限制：分數與類型已由程式端完成計算，你不得重新計算、不得改寫、不得輸出其他 MBTI 類型】
 - 鎖定四向度分數：{json.dumps(locked_scores, ensure_ascii=False)}
 - 鎖定 MBTI 類型：{locked_type}
+- 鎖定中文稱呼：{get_type_info(locked_type)['zh']}
+- 鎖定類型摘要：{get_type_info(locked_type)['brief']}
 - 報告中只能出現這一個 MBTI 類型：{locked_type}
 - 不得出現其他 MBTI 類型，例如 ISTP、ENTP、ISFP 等，除非它正好等於鎖定類型。
 
@@ -643,7 +1194,7 @@ J-P：判斷 Judging / 感知 Perceiving。
 ### 🌸 TAICA 專屬人格解析 - {st.session_state.nickname} 🌸
 
 #### 一、整體人格傾向
-請用 2 到 3 句說明鎖定類型 {locked_type} 與主要特質。不得出現其他 MBTI 類型。
+請用 2 到 3 句說明鎖定類型 {locked_type}，並同時顯示中文稱呼「{get_type_info(locked_type)['zh']}」。不得出現其他 MBTI 類型。
 
 #### 二、四向度分析
 請分別說明 E-I、S-N、T-F、J-P。每一項都必須包含：分數、正確術語、語意線索。
@@ -656,6 +1207,25 @@ J-P：判斷 Judging / 感知 Perceiving。
 
 #### 五、提醒
 請補上一句：本結果僅供自我探索與課程展示使用，不代表正式心理診斷。
+
+#### 六、12 項額外特質分數｜本系統免費提供
+請依據以下資料逐項列出 12 項延伸特質分數，不可更改數字：
+{json.dumps(compute_extended_traits(locked_scores), ensure_ascii=False)}
+
+#### 七、職涯點子
+請提供 3 個適合探索的職涯或任務方向，語氣需保守，不可寫成絕對推薦。
+
+#### 八、工作特質
+請說明此類型在工作或學習任務中的偏好、優勢與注意事項。
+
+#### 九、關係模式
+請說明此類型在人際互動、親密關係或團隊關係中的常見模式。
+
+#### 十、能量驅動因素
+請說明此類型通常從哪些情境獲得動力，又可能在哪些情境消耗能量。
+
+#### 十一、免費進階報告說明
+請說明本專案將 MBTI 簡稱、中文稱呼、12 項延伸特質、職涯點子、工作特質、關係模式與能量驅動因素整合於同一份報告，提供使用者免費取得完整自我探索回饋。
 """
 
     def analyze(self, history: List[Dict[str, str]], nickname: str, profile_note: str) -> Dict[str, Any]:
@@ -726,8 +1296,9 @@ st.markdown(
     """
     <div class="method-card">
     <b>專案定位：</b>本系統透過 16 題選項輔助與開放式問答蒐集使用者語意資料，
-    並由生成式 AI 依據 MBTI 四向度架構進行人格傾向分析。結果僅供自我探索與課程展示，
-    不作為正式心理診斷或臨床判定依據。
+    並由生成式 AI 依據 MBTI 四向度架構進行人格傾向分析。除了 MBTI 簡稱外，
+    也提供中文稱呼、12 項延伸特質分數、職涯點子、工作特質、關係模式與能量驅動因素。
+    結果僅供自我探索與課程展示，不作為正式心理診斷或臨床判定依據。
     </div>
     """,
     unsafe_allow_html=True,
@@ -868,12 +1439,34 @@ else:
     with col_r:
         st.plotly_chart(draw_radar(result["scores"], result["type"]), use_container_width=True)
         st.markdown(
-            f"### 🎉 你的專屬類型：<span style='color:#FF7EB3;'>{result['type']}</span>",
+            f"### 🎉 你的專屬類型：<span style='color:#FF7EB3;'>{type_display(result['type'])}</span>",
             unsafe_allow_html=True,
         )
+        st.caption(get_type_info(result["type"])["brief"])
+
         st.markdown("#### 四向度分數")
         for dim, score in result["scores"].items():
             st.write(f"**{dim}（{DIMENSION_RULES[dim]['label']}）**：{score} / 100")
+
+        with st.expander("免費查看 12 項額外特質分數", expanded=True):
+            traits = compute_extended_traits(result["scores"])
+            top_traits, low_traits = summarize_extended_traits(traits)
+            st.caption("以下長條圖依類別分組，並在同類別中由高到低排序；虛線 50 分為中性參考線。")
+            st.plotly_chart(draw_extended_traits_bar_chart(traits), use_container_width=True)
+
+            c_high, c_low = st.columns(2)
+            with c_high:
+                st.markdown("#### 最高的 3 項特質")
+                for trait_name, trait_score in top_traits:
+                    st.write(f"**{trait_name}**：{trait_score} / 100")
+            with c_low:
+                st.markdown("#### 較低的 3 項特質")
+                for trait_name, trait_score in low_traits:
+                    st.write(f"**{trait_name}**：{trait_score} / 100")
+
+            st.markdown("#### 12 項特質數值一覽")
+            for trait_name, trait_score in traits.items():
+                st.write(f"**{trait_name}**：{trait_score} / 100")
 
         st.download_button(
             label="📄 下載分析報告 TXT",
@@ -881,6 +1474,50 @@ else:
             file_name=f"TAICA_MBTI_Report_{st.session_state.nickname}.txt",
             mime="text/plain",
         )
+
+        st.markdown("#### 匯出報告版面")
+        st.caption("HTML 可直接用瀏覽器開啟並列印成 PDF；PDF 與 PNG 需要額外套件支援。")
+
+        html_report = build_report_html(result)
+        st.download_button(
+            label="🌐 下載完整報告 HTML",
+            data=html_report.encode("utf-8"),
+            file_name=f"TAICA_MBTI_Report_{st.session_state.nickname}.html",
+            mime="text/html",
+        )
+
+        bar_png = fig_to_png_bytes(draw_extended_traits_bar_chart(compute_extended_traits(result["scores"])), scale=2)
+        if bar_png:
+            st.download_button(
+                label="📊 下載 12 項特質長條圖 PNG",
+                data=bar_png,
+                file_name=f"TAICA_MBTI_Traits_{st.session_state.nickname}.png",
+                mime="image/png",
+            )
+        else:
+            st.info("若要下載圖表 PNG，請在 requirements.txt 加入 kaleido。")
+
+        try:
+            summary_png = build_report_summary_image(result)
+            st.download_button(
+                label="🖼️ 下載報告摘要圖片 PNG",
+                data=summary_png,
+                file_name=f"TAICA_MBTI_Summary_{st.session_state.nickname}.png",
+                mime="image/png",
+            )
+        except Exception as exc:
+            st.info(f"摘要圖片尚無法產生：{exc}")
+
+        try:
+            pdf_report = build_pdf_report(result)
+            st.download_button(
+                label="📕 下載完整報告 PDF",
+                data=pdf_report,
+                file_name=f"TAICA_MBTI_Report_{st.session_state.nickname}.pdf",
+                mime="application/pdf",
+            )
+        except Exception as exc:
+            st.info(f"PDF 尚無法產生：{exc}")
 
         if st.button("🔁 重新生成 AI 分析"):
             st.session_state.analysis_result = None
