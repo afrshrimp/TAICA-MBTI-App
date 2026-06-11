@@ -19,10 +19,10 @@
 
 | 姓名 | 學校 | Email | 分工 |
 |---|---|---|---|
-| 胡佳鈺 | 龍華科技大學 | G1142161011@gm.lhu.edu.tw | 專案主題規劃、系統架構設計、Streamlit 介面開發、Groq API 串接、MBTI 四向度計分邏輯、進階報告與匯出功能整合、報告與影片內容統整 |
-| 胡佳媺 | 龍華科技大學 | D1132161001@gm.lhu.edu.tw | 測驗題目與選項檢查、使用者操作流程測試、介面文字檢視 |
-| 顏祐成 | 龍華科技大學 | G1142161004@gm.lhu.edu.tw | 系統功能測試、結果頁面檢查、圖表呈現與報告下載流程測試 |
-| 劉權慶 | 龍華科技大學 | D1134172033@gm.lhu.edu.tw | 程式執行環境、套件安裝、部署流程測試與問題回饋 |
+| 胡佳鈺 | 龍華科技大學 |電機系碩一｜ G1142161011@gm.lhu.edu.tw | 專案主題規劃、系統架構設計、Streamlit 介面開發、Groq API 串接、MBTI 四向度計分邏輯、進階報告與匯出功能整合、報告與影片內容統整 |
+| 胡佳媺 | 龍華科技大學 |電機系二技四年級｜ D1132161001@gm.lhu.edu.tw | 測驗題目與選項檢查、使用者操作流程測試、介面文字檢視 |
+| 顏祐成 | 龍華科技大學 |電機系碩一｜ G1142161004@gm.lhu.edu.tw | 系統功能測試、結果頁面檢查、圖表呈現與報告下載流程測試 |
+| 劉權慶 | 龍華科技大學 |電子系二年級｜ D1134172033@gm.lhu.edu.tw | 程式執行環境、套件安裝、部署流程測試與問題回饋 |
 
 ---
 
@@ -96,7 +96,7 @@ Groq API 生成文字分析報告
 ```text
 taica-ai-mbti-report/
 │
-├── MBTI_TAICA_mobile_safe_pdf.py
+├── app.py
 ├── requirements.txt
 ├── packages.txt
 ├── README.md
@@ -105,7 +105,7 @@ taica-ai-mbti-report/
 
 | 檔案 | 說明 |
 |---|---|
-| `MBTI_TAICA_mobile_safe_pdf.py` | Streamlit 主程式，包含測驗流程、計分邏輯、AI 報告生成與報告匯出 |
+| `app.py` | Streamlit 主程式，包含測驗流程、計分邏輯、AI 報告生成與報告匯出 |
 | `requirements.txt` | Python 套件需求 |
 | `packages.txt` | Streamlit Cloud 系統套件需求，用於安裝中文字型 |
 | `README.md` | 專案說明文件 |
@@ -118,7 +118,7 @@ taica-ai-mbti-report/
 ### 7.1 下載專案
 
 ```bash
-git clone https://github.com/你的帳號/taica-ai-mbti-report.git
+git clone https://github.com/afrshrimp/TAICA-MBTI-App.git
 cd taica-ai-mbti-report
 ```
 
@@ -192,7 +192,7 @@ __pycache__/
 在 PowerShell 或終端機輸入：
 
 ```bash
-streamlit run MBTI_TAICA_mobile_safe_pdf.py
+streamlit run app.py
 ```
 
 執行後瀏覽器會自動開啟系統頁面。若沒有自動開啟，可手動進入：
@@ -212,7 +212,7 @@ http://localhost:8501
 請將以下檔案上傳至 GitHub repository：
 
 ```text
-MBTI_TAICA_mobile_safe_pdf.py
+app.py
 requirements.txt
 packages.txt
 README.md
