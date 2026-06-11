@@ -35,6 +35,7 @@ try:
     from reportlab.lib.units import cm
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
     from reportlab.platypus import Image as RLImage
     from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 except Exception:
@@ -47,6 +48,7 @@ except Exception:
     cm = None
     pdfmetrics = None
     TTFont = None
+    UnicodeCIDFont = None
     RLImage = None
     PageBreak = None
     Paragraph = None
@@ -505,28 +507,72 @@ def summarize_extended_traits(traits: Dict[str, int]) -> Tuple[List[Tuple[str, i
 
 
 def find_cjk_font_path() -> Optional[str]:
-    """尋找可支援繁體中文的字型，供 PDF 與圖片輸出使用。"""
+    """尋找可支援繁體中文的字型，供圖片輸出使用。
+
+    注意：不要使用 DejaVuSans 當後備字型，因為它不支援完整繁體中文，
+    會造成手機 PDF 或 PNG 文字變成方塊。
+    """
     candidates = [
+        # Streamlit Cloud / Ubuntu after installing fonts-noto-cjk
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansTC-Regular.ttf",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
         # Windows
         r"C:/Windows/Fonts/msjh.ttc",
         r"C:/Windows/Fonts/msjh.ttf",
         r"C:/Windows/Fonts/mingliu.ttc",
+        r"C:/Windows/Fonts/kaiu.ttf",
         # macOS
         "/System/Library/Fonts/PingFang.ttc",
         "/System/Library/Fonts/STHeiti Light.ttc",
         "/Library/Fonts/Arial Unicode.ttf",
-        # Linux / Streamlit Cloud common paths
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     ]
     for path in candidates:
         if Path(path).exists():
             return path
     return None
 
+
+def get_required_cjk_font_path() -> str:
+    """取得 CJK 字型；若環境缺字型，直接提示修正方式。"""
+    font_path = find_cjk_font_path()
+    if not font_path:
+        raise RuntimeError(
+            "找不到可支援繁體中文的字型。若部署在 Streamlit Cloud，"
+            "請新增 packages.txt 並寫入 fonts-noto-cjk；若在本機，請確認系統有微軟正黑體、明體、PingFang 或 Noto CJK。"
+        )
+    return font_path
+
+
+
+def load_cjk_font(size: int):
+    """載入真正可顯示繁體中文的字型。
+
+    若字型檔是 .ttc，Pillow 預設可能載入 JP 索引；
+    這裡優先使用 TC 索引，避免繁中輸出被替換成方塊。
+    """
+    font_path = get_required_cjk_font_path()
+    suffix = Path(font_path).suffix.lower()
+    if suffix == ".ttc":
+        # NotoSansCJK-Regular.ttc 常見索引：0 JP、1 KR、2 SC、3 TC、4 HK
+        preferred_indices = [3, 4, 2, 0, 1]
+        last_error = None
+        for idx in preferred_indices:
+            try:
+                font = ImageFont.truetype(font_path, size, index=idx)
+                name = " ".join(font.getname())
+                if any(token in name for token in ["TC", "HK", "CJK", "Microsoft", "PingFang", "Ming"]):
+                    return font
+            except Exception as exc:
+                last_error = exc
+        try:
+            return ImageFont.truetype(font_path, size)
+        except Exception as exc:
+            raise RuntimeError(f"中文字型載入失敗：{font_path}；{exc or last_error}")
+    return ImageFont.truetype(font_path, size)
 
 def markdown_to_plain_text(markdown_text: str) -> str:
     """將報告中的 Markdown 簡化為純文字，方便輸出 PDF 與圖片。"""
@@ -651,7 +697,180 @@ h4 {{ color: #6D4C41; }}
 
 
 def build_pdf_report(result: Dict[str, Any]) -> bytes:
-    """建立 PDF 報告。需要 reportlab；圖表匯出需要 kaleido。"""
+    """建立手機相容 PDF。
+
+    本函式改用 Pillow 將整份報告繪製成多頁圖片，再輸出為 PDF。
+    優點是中文不依賴手機 PDF 閱讀器的字型支援，可避免文字變方塊。
+    缺點是 PDF 文字不可選取；因此頁面仍保留 HTML/TXT 下載作為可複製文字版本。
+    """
+    if PILImage is None or ImageDraw is None or ImageFont is None:
+        raise RuntimeError("尚未安裝 pillow，請在 requirements.txt 加入 pillow。")
+
+    font_path = get_required_cjk_font_path()
+    page_w, page_h = 1240, 1754  # A4 at approximately 150 dpi
+    margin_x, margin_y = 86, 78
+    content_w = page_w - margin_x * 2
+
+    title_font = load_cjk_font(42)
+    h_font = load_cjk_font(32)
+    body_font = load_cjk_font(25)
+    small_font = load_cjk_font(21)
+
+    def new_page() -> PILImage.Image:
+        return PILImage.new("RGB", (page_w, page_h), "white")
+
+    def line_height(font, extra=12):
+        bbox = font.getbbox("測試Ag")
+        return (bbox[3] - bbox[1]) + extra
+
+    def wrap_text_by_width(text: str, font, max_width: int) -> List[str]:
+        text = str(text).replace("	", " ").strip()
+        if not text:
+            return [""]
+        lines = []
+        for raw in text.split("\n"):
+            raw = raw.strip()
+            if not raw:
+                lines.append("")
+                continue
+            current = ""
+            for ch in raw:
+                trial = current + ch
+                if font.getlength(trial) <= max_width:
+                    current = trial
+                else:
+                    if current:
+                        lines.append(current)
+                    current = ch
+            if current:
+                lines.append(current)
+        return lines
+
+    def draw_wrapped(draw, text: str, x: int, y: int, font, fill="#5D4037", max_width: int = content_w, gap: int = 10) -> int:
+        for line in wrap_text_by_width(text, font, max_width):
+            draw.text((x, y), line, font=font, fill=fill)
+            y += line_height(font, gap)
+        return y
+
+    def paste_scaled(page: PILImage.Image, png_bytes: bytes, x: int, y: int, max_w: int, max_h: int) -> int:
+        img = PILImage.open(io.BytesIO(png_bytes)).convert("RGB")
+        ratio = min(max_w / img.width, max_h / img.height)
+        new_size = (max(1, int(img.width * ratio)), max(1, int(img.height * ratio)))
+        img = img.resize(new_size)
+        page.paste(img, (x, y))
+        return y + img.height + 28
+
+    pages: List[PILImage.Image] = []
+    mbti_type = result["type"]
+    type_info = get_type_info(mbti_type)
+    traits = compute_extended_traits(result["scores"])
+    top_traits, low_traits = summarize_extended_traits(traits)
+
+    # Page 1: title, type, scores, summary card
+    page = new_page()
+    draw = ImageDraw.Draw(page)
+    y = margin_y
+    y = draw_wrapped(draw, APP_TITLE, margin_x, y, title_font, fill="#AD1457", max_width=content_w, gap=14) + 8
+    draw.text((margin_x, y), f"專屬類型：{type_display(mbti_type)}", font=h_font, fill="#AD1457")
+    y += line_height(h_font, 18)
+    y = draw_wrapped(draw, f"類型摘要：{type_info['brief']}", margin_x, y, body_font, max_width=content_w)
+    y = draw_wrapped(draw, f"生成時間：{datetime.now().strftime('%Y-%m-%d %H:%M')}", margin_x, y + 10, small_font, fill="#795548") + 14
+
+    draw.text((margin_x, y), "四向度分數", font=h_font, fill="#AD1457")
+    y += line_height(h_font, 10)
+    for dim, score in result["scores"].items():
+        label = DIMENSION_RULES[dim]["label"]
+        draw.text((margin_x + 18, y), f"{dim} | {label}：{score} / 100", font=body_font, fill="#5D4037")
+        y += line_height(body_font, 8)
+    y += 10
+
+    draw.text((margin_x, y), "最高 3 項特質", font=h_font, fill="#AD1457")
+    y += line_height(h_font, 8)
+    for name, value in top_traits:
+        draw.text((margin_x + 18, y), f"- {name}：{value} / 100", font=body_font, fill="#5D4037")
+        y += line_height(body_font, 7)
+    y += 8
+    draw.text((margin_x, y), "較低 3 項特質", font=h_font, fill="#AD1457")
+    y += line_height(h_font, 8)
+    for name, value in low_traits:
+        draw.text((margin_x + 18, y), f"- {name}：{value} / 100", font=body_font, fill="#5D4037")
+        y += line_height(body_font, 7)
+    footer = "本結果僅供課程展示與人格傾向探索使用，不作為正式心理診斷依據。"
+    y = draw_wrapped(draw, footer, margin_x, y + 24, small_font, fill="#795548", max_width=content_w)
+    pages.append(page)
+
+    # Page 2: visual charts as images
+    page = new_page()
+    draw = ImageDraw.Draw(page)
+    y = margin_y
+    draw.text((margin_x, y), "圖表視覺化", font=title_font, fill="#AD1457")
+    y += line_height(title_font, 18)
+
+    radar_png = fig_to_png_bytes(draw_radar(result["scores"], mbti_type), scale=2)
+    if radar_png:
+        draw.text((margin_x, y), "MBTI 四向度雷達圖", font=h_font, fill="#AD1457")
+        y += line_height(h_font, 10)
+        y = paste_scaled(page, radar_png, margin_x + 150, y, content_w - 300, 520)
+
+    draw.text((margin_x, y), "12 項延伸特質長條圖", font=h_font, fill="#AD1457")
+    y += line_height(h_font, 10)
+    bar_png = build_traits_chart_image(result)
+    y = paste_scaled(page, bar_png, margin_x, y, content_w, 780)
+    pages.append(page)
+
+    # Page 3: trait table
+    page = new_page()
+    draw = ImageDraw.Draw(page)
+    y = margin_y
+    draw.text((margin_x, y), "12 項延伸特質分數", font=title_font, fill="#AD1457")
+    y += line_height(title_font, 18)
+    for idx, (name, value) in enumerate(traits.items(), 1):
+        draw.text((margin_x + 18, y), f"{idx}. {name}：{value} / 100", font=body_font, fill="#5D4037")
+        y += line_height(body_font, 8)
+    y += 18
+    y = draw_wrapped(draw, "最高 3 項特質：" + "、".join([f"{name} {value}" for name, value in top_traits]), margin_x, y, body_font, max_width=content_w)
+    y = draw_wrapped(draw, "較低 3 項特質：" + "、".join([f"{name} {value}" for name, value in low_traits]), margin_x, y + 8, body_font, max_width=content_w)
+    pages.append(page)
+
+    # Remaining pages: full analysis report text
+    report_lines = []
+    for block in markdown_to_plain_text(result["report"]).split("\n"):
+        block = block.strip()
+        if block:
+            report_lines.extend(wrap_text_by_width(block, body_font, content_w))
+        report_lines.append("")
+
+    page = new_page()
+    draw = ImageDraw.Draw(page)
+    y = margin_y
+    draw.text((margin_x, y), "完整分析報告", font=title_font, fill="#AD1457")
+    y += line_height(title_font, 18)
+    for line in report_lines:
+        if y > page_h - margin_y - line_height(body_font):
+            pages.append(page)
+            page = new_page()
+            draw = ImageDraw.Draw(page)
+            y = margin_y
+        if line:
+            draw.text((margin_x, y), line, font=body_font, fill="#5D4037")
+            y += line_height(body_font, 8)
+        else:
+            y += int(line_height(body_font, 8) * 0.45)
+    y += 12
+    if y < page_h - margin_y - 80:
+        draw_wrapped(draw, "註：本結果僅供課程展示與人格傾向探索使用，不作為正式心理診斷依據。", margin_x, y, small_font, fill="#795548", max_width=content_w)
+    pages.append(page)
+
+    # Save all pages as one PDF. Since each page is an image, mobile PDF readers will not show CJK squares.
+    buffer = io.BytesIO()
+    first, rest = pages[0], pages[1:]
+    first.save(buffer, format="PDF", save_all=True, append_images=rest, resolution=150.0)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def build_text_pdf_report_deprecated(result: Dict[str, Any]) -> bytes:
+    """保留舊版文字 PDF 寫法作為備用；手機端不建議使用。"""
     if SimpleDocTemplate is None:
         raise RuntimeError("尚未安裝 reportlab，請在 requirements.txt 加入 reportlab。")
 
@@ -665,14 +884,11 @@ def build_pdf_report(result: Dict[str, Any]) -> bytes:
         bottomMargin=1.45 * cm,
     )
 
-    font_name = "Helvetica"
-    cjk_font = find_cjk_font_path()
-    if cjk_font:
-        try:
-            pdfmetrics.registerFont(TTFont("CJKFont", cjk_font))
-            font_name = "CJKFont"
-        except Exception:
-            font_name = "Helvetica"
+    font_name = "MSung-Light"
+    try:
+        pdfmetrics.registerFont(UnicodeCIDFont(font_name))
+    except Exception:
+        font_name = "Helvetica"
 
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("TitleCJK", parent=styles["Title"], fontName=font_name, fontSize=18, leading=24, alignment=TA_CENTER, textColor=colors.HexColor("#AD1457"))
@@ -682,82 +898,13 @@ def build_pdf_report(result: Dict[str, Any]) -> bytes:
 
     mbti_type = result["type"]
     type_info = get_type_info(mbti_type)
-    traits = compute_extended_traits(result["scores"])
-    top_traits, low_traits = summarize_extended_traits(traits)
-    story = []
-
-    def p(text: str, style=body_style):
-        safe = html.escape(str(text)).replace("\n", "<br/>")
-        story.append(Paragraph(safe, style))
-
-    story.append(Paragraph(html.escape(APP_TITLE), title_style))
-    story.append(Spacer(1, 0.25 * cm))
-    p(f"專屬類型：{type_display(mbti_type)}", h_style)
-    p(f"類型摘要：{type_info['brief']}")
-    p(f"生成時間：{datetime.now().strftime('%Y-%m-%d %H:%M')}", small_style)
-    story.append(Spacer(1, 0.25 * cm))
-
-    score_data = [["向度", "定義", "分數"]] + [
-        [dim, DIMENSION_RULES[dim]["label"], f"{score} / 100"]
-        for dim, score in result["scores"].items()
-    ]
-    table = Table(score_data, colWidths=[2.3 * cm, 8.5 * cm, 3.0 * cm])
-    table.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), font_name),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#FCE4EC")),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#F8BBD0")),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
-        ("LEADING", (0, 0), (-1, -1), 12),
-    ]))
-    story.append(Paragraph("四向度分數", h_style))
-    story.append(table)
-    story.append(Spacer(1, 0.3 * cm))
-
-    radar_png = fig_to_png_bytes(draw_radar(result["scores"], mbti_type), scale=2)
-    bar_png = fig_to_png_bytes(draw_extended_traits_bar_chart(traits), scale=2)
-    if not bar_png:
-        try:
-            bar_png = build_traits_chart_image(result)
-        except Exception:
-            bar_png = None
-    if radar_png:
-        story.append(Paragraph("MBTI 四向度雷達圖", h_style))
-        story.append(RLImage(io.BytesIO(radar_png), width=12 * cm, height=8 * cm))
-    if bar_png:
-        story.append(Paragraph("12 項延伸特質長條圖", h_style))
-        story.append(RLImage(io.BytesIO(bar_png), width=15.5 * cm, height=10.5 * cm))
-
-    story.append(PageBreak())
-    trait_data = [["特質", "分數"]] + [[name, f"{value} / 100"] for name, value in traits.items()]
-    trait_table = Table(trait_data, colWidths=[10.5 * cm, 3.2 * cm])
-    trait_table.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), font_name),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#FCE4EC")),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#F8BBD0")),
-        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
-        ("LEADING", (0, 0), (-1, -1), 12),
-    ]))
-    story.append(Paragraph("12 項延伸特質分數", h_style))
-    story.append(trait_table)
-    story.append(Spacer(1, 0.25 * cm))
-    p("最高 3 項特質：" + "、".join([f"{name} {value}" for name, value in top_traits]))
-    p("較低 3 項特質：" + "、".join([f"{name} {value}" for name, value in low_traits]))
-
-    story.append(Paragraph("完整分析報告", h_style))
-    plain_report = markdown_to_plain_text(result["report"])
-    for block in plain_report.split("\n"):
-        if block.strip():
-            p(block.strip())
-        else:
-            story.append(Spacer(1, 0.15 * cm))
-
-    story.append(Spacer(1, 0.25 * cm))
-    p("註：本結果僅供課程展示與人格傾向探索使用，不作為正式心理診斷依據。", small_style)
+    story = [Paragraph(html.escape(APP_TITLE), title_style), Spacer(1, 0.25 * cm)]
+    story.append(Paragraph(html.escape(f"專屬類型：{type_display(mbti_type)}"), h_style))
+    story.append(Paragraph(html.escape(f"類型摘要：{type_info['brief']}"), body_style))
+    story.append(Paragraph(html.escape("本結果僅供課程展示與人格傾向探索使用，不作為正式心理診斷依據。"), small_style))
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
-
 
 def build_report_summary_image(result: Dict[str, Any]) -> bytes:
     """建立一張摘要圖片 PNG，適合社群分享或放入簡報。需要 pillow。"""
@@ -771,10 +918,10 @@ def build_report_summary_image(result: Dict[str, Any]) -> bytes:
     W, H = 1200, 1600
     img = PILImage.new("RGB", (W, H), "#FFF5F7")
     draw = ImageDraw.Draw(img)
-    font_title = ImageFont.truetype(font_path, 42)
-    font_h = ImageFont.truetype(font_path, 30)
-    font_body = ImageFont.truetype(font_path, 24)
-    font_small = ImageFont.truetype(font_path, 20)
+    font_title = load_cjk_font(42)
+    font_h = load_cjk_font(30)
+    font_body = load_cjk_font(24)
+    font_small = load_cjk_font(20)
 
     def draw_text_wrapped(text: str, x: int, y: int, font, fill="#5D4037", width_chars=34, line_gap=10):
         lines = []
@@ -856,9 +1003,9 @@ def build_traits_chart_image(result: Dict[str, Any]) -> bytes:
         "適配能力": "#A5D6A7",
     }
 
-    font_title = ImageFont.truetype(font_path, 40)
-    font_h = ImageFont.truetype(font_path, 28)
-    font_body = ImageFont.truetype(font_path, 23)
+    font_title = load_cjk_font(40)
+    font_h = load_cjk_font(28)
+    font_body = load_cjk_font(23)
     font_small = ImageFont.truetype(font_path, 19)
 
     W, H = 1500, 1350
